@@ -12,6 +12,52 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
 - **Microservices Centric**: Designed with scalability, resilience, and maintenance as a forefront.
 - **Community & Open-Source**: A platform built for developers, endorsed by developers.
 
+## Quick Start
+
+1. **Database Setup**:
+   
+   Before running PulseCore, ensure you've set up the necessary PostgreSQL tables. The following table schemas need to exist:
+
+   ```sql
+   CREATE TABLE users (
+       user_id SERIAL PRIMARY KEY,
+       username VARCHAR(50) NOT NULL UNIQUE,
+       password VARCHAR(255) NOT NULL,
+       email VARCHAR(100) UNIQUE,
+       date_created TIMESTAMP DEFAULT current_timestamp
+   );
+
+   CREATE TABLE game_stats (
+       stat_id SERIAL PRIMARY KEY,
+       user_id INT REFERENCES users(user_id),
+       game_played VARCHAR(50),
+       properties JSONB,
+       date_played TIMESTAMP DEFAULT current_timestamp
+   );
+
+   CREATE TABLE rooms (
+       room_id SERIAL PRIMARY KEY,
+       room_name VARCHAR(50) NOT NULL,
+       max_players INT DEFAULT 10,
+       current_players INT DEFAULT 0,
+       status VARCHAR(20) DEFAULT 'available',
+       properties JSONB,
+       date_created TIMESTAMP DEFAULT current_timestamp
+   );
+   ```
+
+2. **Clone**:
+   ```bash
+   git clone https://github.com/muradshahsuvarov/pulsecore
+   ```
+
+3. **Setup**:
+   ```bash
+   cd pulsecore/server && go get .
+   ```
+
+4. **Run**: -
+
 ## Licensing
 
 ### Open Source License
@@ -23,20 +69,6 @@ PulseCore is free and open-source under the [MIT License](LICENSE). This allows 
 If you wish to use PulseCore in a commercial game or application, please obtain a commercial license. The commercial license provides additional features, support, and ensures your game scales while supporting PulseCore's continued development. For more details and pricing, please [contact us](mailto:muradshahsuvarov@gmail.com).
 
 **Important**: Unauthorized commercial use without obtaining the appropriate license is strictly prohibited.
-
-## Quick Start
-
-1. **Clone**:
-   ```bash
-   git clone https://github.com/muradshahsuvarov/pulsecore
-   ```
-
-2. **Setup**:
-   ```bash
-   cd pulsecore/server && go get .
-   ```
-
-3. **Run**: (Additional setup steps)
 
 ## Documentation
 
