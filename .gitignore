@@ -7,6 +7,9 @@
 _obj
 _test
 
+#go
+go.mod
+
 # Architecture specific extensions/prefixes
 *.[568vq]
 [568vq].out
@@ -62,3 +65,5 @@ _testmain.go
 *.dmg
 *.iso
 *.vcd
+
+DevPlan.txt
