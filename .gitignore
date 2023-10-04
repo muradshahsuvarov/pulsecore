@@ -62,3 +62,5 @@ _testmain.go
 *.dmg
 *.iso
 *.vcd
+
+DevPlan.txt
