@@ -49,7 +49,7 @@ func main() {
 
 	r := gin.Default()
 
-	r.GET("/database/records", fetchRecords)
+	r.POST("/database/records/query", fetchRecords)
 	r.POST("/database/records", createRecords)
 	r.PUT("/database/records", updateRecords)
 	r.DELETE("/database/records", deleteRecords)
