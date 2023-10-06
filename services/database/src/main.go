@@ -11,11 +11,11 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/pgxpool"
 )
 
 var (
-	db               *pgx.Conn
+	db               *pgxpool.Pool
 	allowedTablesMap map[string]bool
 )
 
@@ -41,11 +41,11 @@ func main() {
 	}
 
 	connString := fmt.Sprintf("postgres://%s:%s@%s:%s/%s", config.Username, config.Password, config.Hostname, config.Port, config.DBName)
-	db, err = pgx.Connect(context.Background(), connString)
+	db, err = pgxpool.Connect(context.Background(), connString)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
-	defer db.Close(context.Background())
+	defer db.Close()
 
 	r := gin.Default()
 
@@ -135,8 +135,8 @@ func fetchRecords(c *gin.Context) {
 
 func createRecords(c *gin.Context) {
 	var inputData struct {
-		TableName string                 `json:"table_name"`
-		Record    map[string]interface{} `json:"record"`
+		TableName string                   `json:"table_name"`
+		Records   []map[string]interface{} `json:"records"`
 	}
 
 	if err := c.ShouldBindJSON(&inputData); err != nil {
@@ -150,58 +150,70 @@ func createRecords(c *gin.Context) {
 		return
 	}
 
-	if err := dbutils.InsertRecord(db, inputData.TableName, inputData.Record); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+	for _, record := range inputData.Records {
+		if err := dbutils.InsertRecord(db, inputData.TableName, record); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to insert record: %v", err)})
+			return
+		}
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"message": "Record created successfully"})
+	c.JSON(http.StatusCreated, gin.H{"message": fmt.Sprintf("%d record(s) created successfully", len(inputData.Records))})
 }
 
 func updateRecords(c *gin.Context) {
-	var inputData struct {
-		ID        string                 `json:"id"`
+	type UpdateInput struct {
+		IDs       []string               `json:"ids"`
 		TableName string                 `json:"table_name"`
 		Fields    map[string]interface{} `json:"fields"`
 	}
 
+	var inputData []UpdateInput
+
 	if err := c.ShouldBindJSON(&inputData); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	tableName := inputData.TableName
-	if _, ok := allowedTablesMap[tableName]; !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid table name provided"})
-		return
+	for _, record := range inputData {
+		tableName := record.TableName
+		if _, ok := allowedTablesMap[tableName]; !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid table name provided: %s", tableName)})
+			return
+		}
+
+		setClauses := make([]string, 0, len(record.Fields))
+		values := make([]interface{}, 0, len(record.Fields)+len(record.IDs))
+
+		var i = 1
+		for column, value := range record.Fields {
+			setClauses = append(setClauses, fmt.Sprintf("%s=$%d", column, i))
+			values = append(values, value)
+			i++
+		}
+
+		placeholders := make([]string, len(record.IDs))
+		for idx, id := range record.IDs {
+			placeholders[idx] = fmt.Sprintf("$%d", i)
+			values = append(values, id)
+			i++
+		}
+
+		updateQuery := fmt.Sprintf("UPDATE %s SET %s WHERE id IN (%s)", tableName, strings.Join(setClauses, ", "), strings.Join(placeholders, ", "))
+
+		_, err := db.Exec(context.Background(), updateQuery, values...)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
-	setClauses := make([]string, 0, len(inputData.Fields))
-	values := make([]interface{}, 0, len(inputData.Fields)+1)
-
-	var i = 1
-	for column, value := range inputData.Fields {
-		setClauses = append(setClauses, fmt.Sprintf("%s=$%d", column, i))
-		values = append(values, value)
-		i++
-	}
-
-	values = append(values, inputData.ID)
-	updateQuery := fmt.Sprintf("UPDATE %s SET %s WHERE id=$%d", tableName, strings.Join(setClauses, ", "), i)
-
-	_, err := db.Exec(context.Background(), updateQuery, values...)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("Record with ID %s in table %s updated successfully", inputData.ID, tableName)})
+	c.JSON(http.StatusOK, gin.H{"message": "Records updated successfully"})
 }
 
 func deleteRecords(c *gin.Context) {
 	var inputData struct {
-		ID        string `json:"id"`
-		TableName string `json:"table_name"`
+		IDs       []string `json:"ids"`
+		TableName string   `json:"table_name"`
 	}
 
 	if err := c.ShouldBindJSON(&inputData); err != nil {
@@ -215,14 +227,22 @@ func deleteRecords(c *gin.Context) {
 		return
 	}
 
-	deleteQuery := fmt.Sprintf("DELETE FROM %s WHERE id=$1", tableName)
-	_, err := db.Exec(context.Background(), deleteQuery, inputData.ID)
+	placeholders := make([]string, len(inputData.IDs))
+	args := make([]interface{}, len(inputData.IDs))
+	for i, id := range inputData.IDs {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+
+	deleteQuery := fmt.Sprintf("DELETE FROM %s WHERE id IN (%s)", tableName, strings.Join(placeholders, ","))
+
+	_, err := db.Exec(context.Background(), deleteQuery, args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("Record with ID %s in table %s deleted successfully", inputData.ID, tableName)})
+	c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("%d record(s) in table %s deleted successfully", len(inputData.IDs), tableName)})
 }
 
 func checkHealth(c *gin.Context) {

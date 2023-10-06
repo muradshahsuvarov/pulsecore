@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/pgxpool"
 )
 
 type DBConfig struct {
@@ -17,7 +17,7 @@ type DBConfig struct {
 	AllowedTables []string `json:"allowedTables"`
 }
 
-func InsertRecord(db *pgx.Conn, tableName string, record map[string]interface{}) error {
+func InsertRecord(db *pgxpool.Pool, tableName string, record map[string]interface{}) error {
 
 	columns := make([]string, len(record))
 	values := make([]interface{}, len(record))
