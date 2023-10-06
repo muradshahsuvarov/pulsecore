@@ -7,7 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"pulsecore/database-service/src/dbutils"
+	"pulsecore/services/database/src/dbutils"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -176,9 +176,8 @@ func updateRecords(c *gin.Context) {
 		return
 	}
 
-	// Start building the update query
 	setClauses := make([]string, 0, len(inputData.Fields))
-	values := make([]interface{}, 0, len(inputData.Fields)+1) // +1 for the ID
+	values := make([]interface{}, 0, len(inputData.Fields)+1)
 
 	var i = 1
 	for column, value := range inputData.Fields {
@@ -187,7 +186,7 @@ func updateRecords(c *gin.Context) {
 		i++
 	}
 
-	values = append(values, inputData.ID) // append ID at the end
+	values = append(values, inputData.ID)
 	updateQuery := fmt.Sprintf("UPDATE %s SET %s WHERE id=$%d", tableName, strings.Join(setClauses, ", "), i)
 
 	_, err := db.Exec(context.Background(), updateQuery, values...)
@@ -216,7 +215,6 @@ func deleteRecords(c *gin.Context) {
 		return
 	}
 
-	// Execute the DELETE statement
 	deleteQuery := fmt.Sprintf("DELETE FROM %s WHERE id=$1", tableName)
 	_, err := db.Exec(context.Background(), deleteQuery, inputData.ID)
 	if err != nil {
