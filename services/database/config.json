@@ -4,5 +4,5 @@
 	"username": "",
 	"password": "",
 	"dbname": "pulsecoredb",
-	"allowedTables": ["game_stats", "rooms", "users"]
+	"allowedTables": ["game_stats", "rooms", "users", "applications"]
 }
