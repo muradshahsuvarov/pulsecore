@@ -16,35 +16,19 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
 
 1. **Database Setup**:
    
-   Before running PulseCore, ensure you've set up the necessary PostgreSQL tables. The following table schemas need to exist:
+   Before running PulseCore, ensure your database is properly configured. To set up the necessary PostgreSQL tables and schemas, simply run the provided setup script:
 
-   ```sql
-   CREATE TABLE users (
-       user_id SERIAL PRIMARY KEY,
-       username VARCHAR(50) NOT NULL UNIQUE,
-       password VARCHAR(255) NOT NULL,
-       email VARCHAR(100) UNIQUE,
-       date_created TIMESTAMP DEFAULT current_timestamp
-   );
-
-   CREATE TABLE game_stats (
-       stat_id SERIAL PRIMARY KEY,
-       user_id INT REFERENCES users(user_id),
-       game_played VARCHAR(50),
-       properties JSONB,
-       date_played TIMESTAMP DEFAULT current_timestamp
-   );
-
-   CREATE TABLE rooms (
-       room_id SERIAL PRIMARY KEY,
-       room_name VARCHAR(50) NOT NULL,
-       max_players INT DEFAULT 10,
-       current_players INT DEFAULT 0,
-       status VARCHAR(20) DEFAULT 'available',
-       properties JSONB,
-       date_created TIMESTAMP DEFAULT current_timestamp
-   );
+   For Windows users:
    ```
+   Execute the dbsetup.bat script to initialize the necessary PostgreSQL tables.
+   ```
+
+   For Unix/Linux/macOS users:
+   ```bash
+   Execute the dbsetup.sh script to initialize the necessary PostgreSQL tables.
+   ```
+
+   These scripts encapsulate all the required table schemas and database configurations for a hassle-free setup.
 
 2. **Clone**:
    ```bash

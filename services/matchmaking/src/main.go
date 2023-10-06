@@ -39,6 +39,7 @@ func checkHealth(c *gin.Context) {
 }
 
 func listAvailableRooms(c *gin.Context) {
+	// WebSocket (TCP) based
 	// List available game rooms for players to join
 	// This data might come from a database or in-memory storage
 

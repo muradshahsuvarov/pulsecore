@@ -7,8 +7,6 @@
 _obj
 _test
 
-#go
-go.mod
 
 # Architecture specific extensions/prefixes
 *.[568vq]
