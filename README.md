@@ -14,7 +14,12 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
 
 ## Quick Start
 
-1. **Database Setup**:
+1. **Clone**:
+   ```bash
+   git clone https://github.com/muradshahsuvarov/pulsecore
+   ```
+
+2. **Database Setup**:
    
    Before running PulseCore, ensure your database is properly configured. To set up the necessary PostgreSQL tables and schemas, simply run the provided setup script:
 
@@ -30,17 +35,7 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
 
    These scripts encapsulate all the required table schemas and database configurations for a hassle-free setup.
 
-2. **Clone**:
-   ```bash
-   git clone https://github.com/muradshahsuvarov/pulsecore
-   ```
-
-3. **Setup**:
-   ```bash
-   cd pulsecore/server && go get .
-   ```
-
-4. **Run**: -
+3. **Run**: 
 
 ## Licensing
 
