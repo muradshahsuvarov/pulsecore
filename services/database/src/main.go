@@ -212,8 +212,8 @@ func updateRecords(c *gin.Context) {
 
 func deleteRecords(c *gin.Context) {
 	var inputData struct {
-		IDs       []string `json:"ids"`
-		TableName string   `json:"table_name"`
+		TableName  string                 `json:"table_name"`
+		Conditions map[string]interface{} `json:"conditions"`
 	}
 
 	if err := c.ShouldBindJSON(&inputData); err != nil {
@@ -227,22 +227,30 @@ func deleteRecords(c *gin.Context) {
 		return
 	}
 
-	placeholders := make([]string, len(inputData.IDs))
-	args := make([]interface{}, len(inputData.IDs))
-	for i, id := range inputData.IDs {
-		placeholders[i] = fmt.Sprintf("$%d", i+1)
-		args[i] = id
+	whereClauses := make([]string, 0)
+	values := make([]interface{}, 0)
+
+	var i = 1
+	for column, value := range inputData.Conditions {
+		whereClauses = append(whereClauses, fmt.Sprintf("%s=$%d", column, i))
+		values = append(values, value)
+		i++
 	}
 
-	deleteQuery := fmt.Sprintf("DELETE FROM %s WHERE id IN (%s)", tableName, strings.Join(placeholders, ","))
+	whereClause := ""
+	if len(whereClauses) > 0 {
+		whereClause = fmt.Sprintf("WHERE %s", strings.Join(whereClauses, " AND "))
+	}
 
-	_, err := db.Exec(context.Background(), deleteQuery, args...)
+	deleteQuery := fmt.Sprintf("DELETE FROM %s %s", tableName, whereClause)
+
+	_, err := db.Exec(context.Background(), deleteQuery, values...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("%d record(s) in table %s deleted successfully", len(inputData.IDs), tableName)})
+	c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("Records in table %s deleted successfully based on conditions", tableName)})
 }
 
 func checkHealth(c *gin.Context) {

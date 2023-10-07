@@ -2,7 +2,9 @@ package dbutils
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -46,4 +48,17 @@ func PlaceHolders(count int) string {
 		placeholders[i-1] = fmt.Sprintf("$%d", i)
 	}
 	return strings.Join(placeholders, ", ")
+}
+
+func LoadConfig(path string) (DBConfig, error) {
+	var config DBConfig
+	file, err := os.Open(path)
+	if err != nil {
+		return config, err
+	}
+	defer file.Close()
+
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(&config)
+	return config, err
 }

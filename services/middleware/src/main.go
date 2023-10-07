@@ -7,15 +7,14 @@ import (
 	"net/http"
 	"pulsecore/services/middleware/src/mwutils"
 	"strings"
+	"time"
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v4/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 )
 
 var (
-	db              *pgxpool.Pool
 	secretKey       = ""
 	databaseService = ""
 )
@@ -38,8 +37,10 @@ func main() {
 
 	r.POST("/middleware/authenticate", authenticateUser)
 	r.POST("/middleware/register", registerUser)
-	r.GET("/middleware/authenticated", isAuthenticated)
+	r.GET("/middleware/authenticated", checkAuthentication)
 	r.POST("/middleware/application", createApplication)
+	r.PUT("/middleware/application", updateApplication)
+	r.DELETE("/middleware/application", deleteApplication)
 	r.GET("/middleware/health", checkHealth)
 
 	r.Run(":8093")
@@ -80,7 +81,7 @@ func authenticateUser(c *gin.Context) {
 		return
 	}
 
-	resp, err := http.Post(databaseService+"/query", "application/json", bytes.NewBuffer(data))
+	resp, err := http.Post(databaseService+"/records/query", "application/json", bytes.NewBuffer(data))
 	if err != nil || resp.StatusCode != http.StatusOK {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error fetching user data."})
 		return
@@ -153,18 +154,15 @@ func registerUser(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"message": "User registered successfully."})
 }
 
-func isAuthenticated(c *gin.Context) {
-
+func isAuthenticated(c *gin.Context) (bool, error) {
 	authHeader := c.Request.Header.Get("Authorization")
 	if authHeader == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"status": "not authenticated", "message": "No Authorization header provided."})
-		return
+		return false, fmt.Errorf("No Authorization header provided.")
 	}
 
 	parts := strings.SplitN(authHeader, " ", 2)
 	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-		c.JSON(http.StatusUnauthorized, gin.H{"status": "not authenticated", "message": "Authorization header format must be Bearer {token}"})
-		return
+		return false, fmt.Errorf("Authorization header format must be Bearer {token}")
 	}
 	tokenString := parts[1]
 
@@ -176,31 +174,238 @@ func isAuthenticated(c *gin.Context) {
 	})
 
 	if err != nil || !token.Valid {
-		c.JSON(http.StatusUnauthorized, gin.H{"status": "not authenticated", "message": "Invalid token."})
-		return
+		return false, fmt.Errorf("Invalid token.")
 	}
 
+	return true, nil
+}
+
+func checkAuthentication(c *gin.Context) {
+	isAuth, err := isAuthenticated(c)
+	if !isAuth {
+		c.JSON(http.StatusUnauthorized, gin.H{"status": "not authenticated", "message": err.Error()})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"status": "authenticated", "message": "Valid token."})
 }
 
 func createApplication(c *gin.Context) {
-	// Parse the incoming request for application details
-	// Generate a unique AppID
-	// Store the application details and AppID in the database
-	// Return the AppID to the client
+	isAuth, err := isAuthenticated(c)
+	if !isAuth {
+		c.JSON(http.StatusUnauthorized, gin.H{"status": "not authenticated", "message": err.Error()})
+		return
+	}
+
+	var request struct {
+		AppName        string `json:"app_name"`
+		AppDescription string `json:"app_description"`
+		UserID         int    `json:"user_id"`
+	}
+
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	appIdentifier := mwutils.GenerateUUID()
+
+	data, err := json.Marshal(map[string]interface{}{
+		"table_name": "applications",
+		"records": []map[string]interface{}{
+			{
+				"app_name":        request.AppName,
+				"app_identifier":  appIdentifier,
+				"app_description": request.AppDescription,
+				"user_id":         request.UserID,
+				"date_created":    time.Now(),
+				"last_updated":    time.Now(),
+			},
+		},
+	})
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating request payload."})
+		return
+	}
+
+	resp, err := http.Post(databaseService+"/records", "application/json", bytes.NewBuffer(data))
+	if err != nil || resp.StatusCode != http.StatusCreated {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving the application."})
+		return
+	}
+
+	c.JSON(http.StatusCreated, map[string]interface{}{
+		"app_name":        request.AppName,
+		"app_identifier":  appIdentifier,
+		"app_description": request.AppDescription,
+		"user_id":         request.UserID,
+		"date_created":    time.Now(),
+		"last_updated":    time.Now(),
+	})
+}
+
+func updateApplication(c *gin.Context) {
+	isAuth, err := isAuthenticated(c)
+	if !isAuth {
+		c.JSON(http.StatusUnauthorized, gin.H{"status": "not authenticated", "message": err.Error()})
+		return
+	}
+
+	var request struct {
+		AppID          string `json:"app_id"`
+		AppName        string `json:"app_name,omitempty"`
+		AppDescription string `json:"app_description,omitempty"`
+	}
+
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	updateFields := make(map[string]interface{})
+
+	if request.AppName != "" {
+		updateFields["app_name"] = request.AppName
+	}
+
+	if request.AppDescription != "" {
+		updateFields["app_description"] = request.AppDescription
+	}
+
+	updateFields["last_updated"] = time.Now()
+
+	data, err := json.Marshal([]map[string]interface{}{
+		{
+			"ids":        []string{request.AppID},
+			"table_name": "applications",
+			"fields":     updateFields,
+		},
+	})
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating request payload."})
+		return
+	}
+
+	req, err := http.NewRequest("PUT", databaseService+"/records", bytes.NewBuffer(data))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating the PUT request."})
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error sending the PUT request."})
+		return
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating the application."})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Application updated successfully."})
+}
+
+func deleteApplication(c *gin.Context) {
+	isAuth, err := isAuthenticated(c)
+	if !isAuth {
+		c.JSON(http.StatusUnauthorized, gin.H{"status": "not authenticated", "message": err.Error()})
+		return
+	}
+
+	var request struct {
+		AppID string `json:"app_id"`
+	}
+
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	data, err := json.Marshal(map[string]interface{}{
+		"table_name": "server_addresses",
+		"conditions": map[string]interface{}{
+			"app_id": request.AppID,
+		},
+	})
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating request payload."})
+		return
+	}
+
+	req, err := http.NewRequest("DELETE", databaseService+"/records", bytes.NewBuffer(data))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating the DELETE request for servers."})
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting associated servers."})
+		return
+	}
+
+	data, err = json.Marshal(map[string]interface{}{
+		"table_name": "applications",
+		"conditions": map[string]interface{}{
+			"id": request.AppID,
+		},
+	})
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating request payload."})
+		return
+	}
+
+	req, err = http.NewRequest("DELETE", databaseService+"/records", bytes.NewBuffer(data))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating the DELETE request for application."})
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err = client.Do(req)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting the application."})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Application and its associated servers deleted successfully based on app_id."})
 }
 
 func checkHealth(c *gin.Context) {
-	// Check the health of the database and other related services
-	// Return the health status
+	resp, err := http.Get(databaseService + "/health")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"status": "down", "message": "Unable to connect to the database service."})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errorResponse map[string]string
+		if err := json.NewDecoder(resp.Body).Decode(&errorResponse); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"status": "down", "message": "Error parsing response from database service."})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"status": "down", "message": errorResponse["error"]})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "up", "message": "Middleware and associated services are operational."})
 }
 
 func checkDatabaseHealthMiddleware(c *gin.Context) {
 	err := mwutils.CheckDatabaseHealth(databaseService)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		c.Abort() // Important: This stops any further handlers from being executed
+		c.Abort()
 		return
 	}
-	c.Next() // Move on to the next middleware or handler
+	c.Next()
 }

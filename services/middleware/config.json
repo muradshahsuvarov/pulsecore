@@ -1,4 +1,4 @@
 {
 	"SECRET_KEY": "?UPVBRM7juheH%X)0Ck=0`X{::6RM$X>Sp9(P|UH'A{]M9.H8r|p;)~55>hN@,Q",
-	"DATABASE_SERVICE": "http://localhost:8091/database/records" 
+	"DATABASE_SERVICE": "http://localhost:8091/database" 
 }

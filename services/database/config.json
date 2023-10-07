@@ -1,8 +1,8 @@
 {
-	"hostname": "",
-	"port": "",
-	"username": "",
+	"hostname": "localhost",
+	"port": "5432",
+	"username": "postgres",
 	"password": "",
-	"dbname": "pulsecoredb",
-	"allowedTables": ["game_stats", "rooms", "users", "applications"]
+	"dbname": "",
+	"allowedTables": ["users", "applications", "server_address"]
 }
