@@ -36,7 +36,7 @@ func main() {
 	}
 
 	allowedTablesMap = make(map[string]bool)
-	for _, table := range config.AllowedTables {
+	for table := range config.AllowedTables {
 		allowedTablesMap[table] = true
 	}
 
@@ -179,6 +179,11 @@ func updateRecords(c *gin.Context) {
 		if _, ok := allowedTablesMap[tableName]; !ok {
 			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid table name provided: %s", tableName)})
 			return
+		}
+
+		nonUpdatableCols := dbutils.NonUpdatableColumns(tableName)
+		for _, col := range nonUpdatableCols {
+			delete(record.Fields, col)
 		}
 
 		setClauses := make([]string, 0, len(record.Fields))

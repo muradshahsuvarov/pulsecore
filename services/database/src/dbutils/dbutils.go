@@ -11,12 +11,22 @@ import (
 )
 
 type DBConfig struct {
-	Hostname      string   `json:"hostname"`
-	Port          string   `json:"port"`
-	Username      string   `json:"username"`
-	Password      string   `json:"password"`
-	DBName        string   `json:"dbname"`
-	AllowedTables []string `json:"allowedTables"`
+	Hostname      string                 `json:"hostname"`
+	Port          string                 `json:"port"`
+	Username      string                 `json:"username"`
+	Password      string                 `json:"password"`
+	DBName        string                 `json:"dbname"`
+	AllowedTables map[string]TableConfig `json:"allowedTables"`
+}
+
+type TableConfig struct {
+	NonUpdatableColumns []string `json:"nonUpdatableColumns"`
+}
+
+var config DBConfig
+
+func init() {
+	config, _ = LoadConfig("../config.json")
 }
 
 func InsertRecord(db *pgxpool.Pool, tableName string, record map[string]interface{}) error {
@@ -61,4 +71,12 @@ func LoadConfig(path string) (DBConfig, error) {
 	decoder := json.NewDecoder(file)
 	err = decoder.Decode(&config)
 	return config, err
+}
+
+func NonUpdatableColumns(tableName string) []string {
+	tableConfig, ok := config.AllowedTables[tableName]
+	if !ok {
+		return nil
+	}
+	return tableConfig.NonUpdatableColumns
 }

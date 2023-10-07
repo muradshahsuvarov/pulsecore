@@ -1,8 +1,21 @@
 {
 	"hostname": "localhost",
 	"port": "5432",
-	"username": "postgres",
+	"username": "",
 	"password": "",
-	"dbname": "",
-	"allowedTables": ["users", "applications", "server_address"]
+	"dbname": "pulsecoredb",
+	 "allowedTables": {
+        "applications": {
+            "allowed": true,
+            "nonUpdatableColumns": ["id", "app_identifier", "user_id", "date_created"]
+        },
+        "server_addresses": {
+            "allowed": true,
+            "nonUpdatableColumns": ["id", "address", "app_id", "tag", "date_added"]
+        },
+		"users": {
+            "allowed": true,
+            "nonUpdatableColumns": ["id", "email", "date_created"]
+        }
+    }
 }
