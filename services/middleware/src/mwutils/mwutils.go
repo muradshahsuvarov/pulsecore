@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/google/uuid"
 )
 
 type Config struct {
@@ -42,7 +43,7 @@ func LoadConfig(path string) (*Config, error) {
 }
 
 func CheckDatabaseHealth(databaseService string) error {
-	resp, err := http.Get(databaseService + "/database/health")
+	resp, err := http.Get(databaseService + "/health")
 	if err != nil {
 		return fmt.Errorf("Failed to contact database service: %v", err)
 	}
@@ -59,4 +60,8 @@ func CheckDatabaseHealth(databaseService string) error {
 		return fmt.Errorf("Database service not healthy: %s", respError.Message)
 	}
 	return nil
+}
+
+func GenerateUUID() string {
+	return uuid.New().String()
 }
