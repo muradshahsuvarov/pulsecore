@@ -249,13 +249,20 @@ func deleteRecords(c *gin.Context) {
 
 	deleteQuery := fmt.Sprintf("DELETE FROM %s %s", tableName, whereClause)
 
-	_, err := db.Exec(context.Background(), deleteQuery, values...)
+	commandTag, err := db.Exec(context.Background(), deleteQuery, values...)
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("Records in table %s deleted successfully based on conditions", tableName)})
+	affectedRows := commandTag.RowsAffected()
+
+	if affectedRows > 0 {
+		c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("%d records in table %s deleted successfully based on conditions", affectedRows, tableName)})
+	} else {
+		c.JSON(http.StatusNotFound, gin.H{"message": fmt.Sprintf("No records in table %s matched the provided conditions.", tableName)})
+	}
 }
 
 func checkHealth(c *gin.Context) {

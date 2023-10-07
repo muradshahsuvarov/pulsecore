@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"pulsecore/services/middleware/src/mwutils"
 	"strings"
@@ -41,6 +42,8 @@ func main() {
 	r.POST("/middleware/application", createApplication)
 	r.PUT("/middleware/application", updateApplication)
 	r.DELETE("/middleware/application", deleteApplication)
+	r.POST("/middleware/server", createServer)
+	r.DELETE("/middleware/server", deleteServer)
 	r.GET("/middleware/health", checkHealth)
 
 	r.Run(":8093")
@@ -379,6 +382,58 @@ func deleteApplication(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Application and its associated servers deleted successfully based on app_id."})
 }
 
+func createServer(c *gin.Context) {
+
+	isAuth, err := isAuthenticated(c)
+	if !isAuth {
+		c.JSON(http.StatusUnauthorized, gin.H{"status": "not authenticated", "message": err.Error()})
+		return
+	}
+
+	var request struct {
+		Address string `json:"address"`
+		AppID   int    `json:"app_id"`
+		Tag     string `json:"tag"`
+	}
+
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	serverData, err := json.Marshal(map[string]interface{}{
+		"table_name": "server_addresses",
+		"records": []map[string]interface{}{
+			{
+				"address":    request.Address,
+				"app_id":     request.AppID,
+				"tag":        request.Tag,
+				"date_added": time.Now().Format(time.RFC3339), // Ensuring the date is in a standardized format
+			},
+		},
+	})
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating server request payload."})
+		return
+	}
+
+	resp, err := http.Post(databaseService+"/records", "application/json", bytes.NewBuffer(serverData))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error sending data to the database service: " + err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database service error: " + string(bodyBytes)})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"message": "Server created successfully."})
+}
+
 func checkHealth(c *gin.Context) {
 	resp, err := http.Get(databaseService + "/health")
 	if err != nil {
@@ -398,6 +453,52 @@ func checkHealth(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "up", "message": "Middleware and associated services are operational."})
+}
+
+func deleteServer(c *gin.Context) {
+
+	isAuth, err := isAuthenticated(c)
+	if !isAuth {
+		c.JSON(http.StatusUnauthorized, gin.H{"status": "not authenticated", "message": err.Error()})
+		return
+	}
+
+	var request struct {
+		ServerID int `json:"server_id"`
+	}
+
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	data, err := json.Marshal(map[string]interface{}{
+		"table_name": "server_addresses",
+		"conditions": map[string]interface{}{
+			"id": request.ServerID,
+		},
+	})
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating request payload."})
+		return
+	}
+
+	req, err := http.NewRequest("DELETE", databaseService+"/records", bytes.NewBuffer(data))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating the DELETE request."})
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error deleting the server."})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Server deleted successfully."})
 }
 
 func checkDatabaseHealthMiddleware(c *gin.Context) {

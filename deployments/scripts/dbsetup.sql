@@ -1,5 +1,5 @@
 -- Create the pulsecoredb database
-CREATE DATABASE pulsecoredb2;
+CREATE DATABASE pulsecoredb;
 
 -- Switch to the pulsecoredb database
 \c pulsecoredb;
@@ -26,7 +26,7 @@ CREATE TABLE applications (
 -- Create the server_addresses table
 CREATE TABLE server_addresses (
     id SERIAL PRIMARY KEY,
-    address VARCHAR(255) NOT NULL,
+    address VARCHAR(255) NOT NULL UNIQUE,
     app_id INT NOT NULL REFERENCES applications(id),
     tag VARCHAR(255) NOT NULL UNIQUE,
     date_added TIMESTAMP NOT NULL DEFAULT current_timestamp
