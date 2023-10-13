@@ -2,135 +2,128 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
+	"log"
 	"net"
-	"net/rpc"
 	"os"
-	"pulsecore/pulse-client/gameclient"
-	"sync"
+	"strings"
 	"time"
-)
 
-// MessageService is the RPC service that the client exposes
-type MessageService struct {
-	client *gameclient.Client
-}
+	"pulsecore/proto/proto"
+
+	"google.golang.org/grpc"
+)
 
 const (
+	serverAddr        = "localhost:12345"
+	exitCmd           = "exit"
 	heartbeatInterval = 10 * time.Second
-	rpcPort           = "localhost:12346"
 )
 
-var wg sync.WaitGroup
+type Client struct {
+	proto.UnimplementedGameServiceServer
+	MyAddress string
+}
 
 func main() {
-	client := gameclient.NewClient("localhost:12345")
-	connectToServer(client)
-
-	// Start receiving data asynchronously
-	go asyncDataReceiver(client)
-
-	// Start RPC server in the background for this client
-	go startRPCServer(client)
-
-	reader := bufio.NewReader(os.Stdin)
-
-	for {
-		fmt.Println("Enter a message to send to the server (type 'exit' to quit):")
-		text, _ := reader.ReadString('\n')
-
-		if text == "exit\n" {
-			break
-		}
-
-		err := client.Send([]byte(text))
-		if err != nil {
-			fmt.Println("Error sending data:", err)
-			fmt.Println("Attempting to reconnect...")
-			connectToServer(client)
-		}
-	}
-}
-
-func (ms *MessageService) BroadcastMessage(message *string, reply *string) error {
-	fmt.Println("Received broadcast:", *message)
-	*reply = "Message received"
-	return nil
-}
-
-func asyncDataReceiver(client *gameclient.Client) {
-	for {
-		data, err := client.Receive()
-		if err != nil {
-			// Check if error is a read timeout
-			if err.Error() == "read timeout" {
-				continue // continue listening without trying to reconnect
-			}
-
-			fmt.Println("Error receiving data:", err)
-			fmt.Println("Attempting to reconnect...")
-			connectToServer(client)
-			continue
-		}
-
-		fmt.Println("Received from server:", string(data))
-	}
-}
-
-func connectToServer(client *gameclient.Client) {
-	for {
-		err := client.Connect() // This should establish a TCP connection
-		if err != nil {
-			fmt.Println("Error connecting:", err)
-			fmt.Println("Retrying in 5 seconds...")
-			time.Sleep(5 * time.Second)
-		} else {
-			fmt.Println("Connected successfully!")
-
-			// Start sending heartbeats in the background
-			go sendHeartbeats(client)
-
-			break
-		}
-	}
-}
-
-func sendHeartbeats(client *gameclient.Client) {
-	ticker := time.NewTicker(heartbeatInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			client.Send([]byte("heartbeat"))
-		}
-	}
-}
-
-func startRPCServer(client *gameclient.Client) {
-	msgService := &MessageService{client: client}
-	rpc.Register(msgService)
-
-	listener, err := net.Listen("tcp", "localhost:0") // 0 allows the OS to pick an available port
+	// Set up a connection to the server
+	conn, err := grpc.Dial(serverAddr, grpc.WithInsecure())
 	if err != nil {
-		fmt.Println("Error starting RPC server:", err)
-		return
+		log.Fatalf("Did not connect: %v", err)
 	}
-	defer listener.Close()
+	defer conn.Close()
 
-	// After the listener is started, get the actual port number
-	actualPort := listener.Addr().(*net.TCPAddr).Port
-	fmt.Printf("RPC Server started on port %d\n", actualPort)
+	client := proto.NewGameServiceClient(conn)
 
-	// Then update the RPC_ADDRESS line in the connectToServer function
-	client.Send([]byte(fmt.Sprintf("RPC_ADDRESS:localhost:%d", actualPort)))
+	// Start listening on a dynamically allocated port
+	lis, err := net.Listen("tcp", ":0")
+	if err != nil {
+		log.Fatalf("Failed to listen on a port: %v", err)
+	}
+	defer lis.Close()
+	dynamicPort := lis.Addr().(*net.TCPAddr).Port
+	fmt.Printf("Listening on dynamically allocated port: %d\n", dynamicPort)
 
-	for {
-		conn, err := listener.Accept()
-		if err != nil {
-			fmt.Println("Error accepting RPC connection:", err)
-			continue
+	// Register the client with the dynamically allocated port
+	rpcAddress := fmt.Sprintf("localhost:%d", dynamicPort)
+	regResp, err := registerClient(client, rpcAddress)
+	if err != nil || !regResp.GetSuccess() {
+		log.Fatalf("Failed to register client: %v", err)
+	}
+	fmt.Println("Client registered successfully!")
+
+	// Start a go routine to send heartbeats regularly
+	go func() {
+		for {
+			time.Sleep(heartbeatInterval) // Wait for heartbeatInterval duration
+			_, err := sendHeartbeat(client, rpcAddress)
+			if err != nil {
+				log.Printf("Failed to send heartbeat: %v", err)
+			}
 		}
-		go rpc.ServeConn(conn)
+	}()
+
+	clientServer := grpc.NewServer()
+	proto.RegisterGameServiceServer(clientServer, &Client{MyAddress: rpcAddress})
+	go func() {
+		if err := clientServer.Serve(lis); err != nil {
+			log.Fatalf("Failed to serve: %v", err)
+		}
+	}()
+
+	// Send messages in an infinite loop until the user types "exit"
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Print("Enter your message (or 'exit' to quit): ")
+		message, _ := reader.ReadString('\n')
+		message = strings.TrimSpace(message) // remove any trailing newline
+
+		if message == exitCmd {
+			fmt.Println("Exiting...")
+			break
+		}
+
+		msgResp, err := sendMessageToServer(client, message)
+		if err != nil || !msgResp.GetSuccess() {
+			log.Fatalf("Failed to send message to server: %v", err)
+		}
+		fmt.Println("Message sent successfully!")
 	}
+}
+
+func registerClient(c proto.GameServiceClient, rpcAddress string) (*proto.RegisterClientResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	return c.RegisterClient(ctx, &proto.RegisterClientRequest{RpcAddress: rpcAddress})
+}
+
+func sendHeartbeat(c proto.GameServiceClient, clientId string) (*proto.HeartbeatResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	return c.SendHeartbeat(ctx, &proto.HeartbeatRequest{ClientId: clientId})
+}
+
+func sendMessageToServer(c proto.GameServiceClient, message string) (*proto.SendMessageResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	return c.SendMessageToServer(ctx, &proto.SendMessageRequest{Message: message})
+}
+
+func broadcastMessage(c proto.GameServiceClient, message string) (*proto.MessageResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	return c.BroadcastMessage(ctx, &proto.MessageRequest{Message: message})
+}
+
+func (c *Client) ReceiveMessageFromServer(ctx context.Context, req *proto.MessageFromServerRequest) (*proto.MessageFromServerResponse, error) {
+	// Handle the incoming message here
+	if req.SenderAddress != c.MyAddress && req.SenderAddress != serverAddr {
+		fmt.Printf("Received message from another client: %s\n", req.Message)
+	}
+	return &proto.MessageFromServerResponse{Success: true}, nil
 }

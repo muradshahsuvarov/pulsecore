@@ -1,86 +1,73 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"io"
 	"net"
-	"net/rpc"
 	"os"
-	"strings"
+	"pulsecore/proto/proto"
 	"sync"
 	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/peer"
 )
 
-const heartbeatInterval = 10 * time.Second
-const missedHeartbeatsAllowed = 3
+const (
+	serverAddr              = "localhost:12345"
+	heartbeatInterval       = 10 * time.Second
+	missedHeartbeatsAllowed = 3
+)
 
 type ClientInfo struct {
 	LastHeartbeat time.Time
-	RPCClient     *rpc.Client
-	RPCAddress    string
+	RPCClient     proto.GameServiceClient
+}
+
+type gameServer struct {
+	proto.UnimplementedGameServiceServer
 }
 
 var clients = make(map[string]*ClientInfo)
 var clientMutex = sync.RWMutex{}
-var bufferPool = &sync.Pool{
-	New: func() interface{} {
-		return make([]byte, 1024)
-	},
-}
 
 func main() {
-	serverAddr := "localhost:12345"
 	listener, err := net.Listen("tcp", serverAddr)
 	checkError(err)
-	defer listener.Close()
+
+	s := grpc.NewServer()
+	proto.RegisterGameServiceServer(s, &gameServer{})
 
 	fmt.Println("Server started on", serverAddr)
-
 	go checkHeartbeats()
 
-	for {
-		conn, err := listener.Accept()
-		if err != nil {
-			fmt.Println("Error accepting TCP connection:", err)
-			continue
-		}
-
-		go handleTCPConnection(conn)
+	if err := s.Serve(listener); err != nil {
+		fmt.Println("Failed to serve:", err)
 	}
 }
 
-func handleTCPConnection(conn net.Conn) {
-	defer conn.Close()
-
-	buffer := bufferPool.Get().([]byte)
-	defer bufferPool.Put(buffer)
-
-	for {
-		n, err := conn.Read(buffer)
-		if err != nil {
-			if err != io.EOF {
-				fmt.Println("Error reading from TCP connection:", err)
-			}
-			return
-		}
-
-		message := string(buffer[:n])
-		handleMessage(message, conn)
-	}
+func (gs *gameServer) BroadcastMessage(ctx context.Context, req *proto.MessageRequest) (*proto.MessageResponse, error) {
+	broadcastMessageToClients(req.GetMessage(), ctx)
+	return &proto.MessageResponse{Reply: "Message broadcasted"}, nil
 }
 
-func handleMessage(message string, conn net.Conn) {
-	addr := conn.RemoteAddr().String()
+func (gs *gameServer) SendHeartbeat(ctx context.Context, req *proto.HeartbeatRequest) (*proto.HeartbeatResponse, error) {
+	updateHeartbeat(req.GetClientId())
+	return &proto.HeartbeatResponse{Success: true}, nil
+}
 
-	if message == "heartbeat" {
-		updateHeartbeat(addr)
-	} else if strings.HasPrefix(message, "RPC_ADDRESS:") {
-		rpcAddr := strings.TrimPrefix(message, "RPC_ADDRESS:")
-		trackClient(addr, rpcAddr)
-	} else {
-		fmt.Printf("Received message '%s' from %s\n", message, addr)
-		broadcastMessageToClients(addr, message)
-	}
+func (gs *gameServer) SendMessageToServer(ctx context.Context, req *proto.SendMessageRequest) (*proto.SendMessageResponse, error) {
+	fmt.Printf("Received message: %s\n", req.GetMessage())
+
+	// Broadcast message to all clients
+	broadcastMessageToClients(req.GetMessage(), ctx)
+
+	return &proto.SendMessageResponse{Success: true}, nil
+}
+
+func (gs *gameServer) RegisterClient(ctx context.Context, req *proto.RegisterClientRequest) (*proto.RegisterClientResponse, error) {
+	trackClient(req.GetRpcAddress())
+	return &proto.RegisterClientResponse{Success: true}, nil
 }
 
 func checkError(err error) {
@@ -99,29 +86,28 @@ func updateHeartbeat(clientAddr string) {
 	}
 }
 
-func trackClient(tcpAddr string, rpcAddr string) {
+func trackClient(rpcAddr string) {
 	clientMutex.Lock()
 	defer clientMutex.Unlock()
 
-	var client *rpc.Client
-	var err error
-	for i := 0; i < 3; i++ { // Try connecting 3 times
-		client, err = rpc.Dial("tcp", rpcAddr)
-		if err == nil {
-			break
-		}
-		time.Sleep(2 * time.Second) // Wait for 2 seconds before the next try
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	conn, err := grpc.DialContext(ctx, rpcAddr, grpc.WithInsecure())
 
 	if err != nil {
-		fmt.Println("Error connecting to client's RPC server after multiple attempts:", err)
+		fmt.Printf("Failed to set up RPC client for address %s: %v\n", rpcAddr, err)
 		return
 	}
 
-	clients[tcpAddr] = &ClientInfo{
-		LastHeartbeat: time.Now(),
-		RPCClient:     client,
-		RPCAddress:    rpcAddr,
+	// If a client with the exact rpcAddr exists, update its LastHeartbeat and RPCClient. Otherwise, add a new entry.
+	if existingClient, exists := clients[rpcAddr]; exists {
+		existingClient.RPCClient = proto.NewGameServiceClient(conn)
+		existingClient.LastHeartbeat = time.Now()
+	} else {
+		clients[rpcAddr] = &ClientInfo{
+			LastHeartbeat: time.Now(),
+			RPCClient:     proto.NewGameServiceClient(conn),
+		}
 	}
 }
 
@@ -134,7 +120,6 @@ func checkHeartbeats() {
 		for addr, clientInfo := range clients {
 			if currentTime.Sub(clientInfo.LastHeartbeat) > heartbeatInterval*time.Duration(missedHeartbeatsAllowed) {
 				fmt.Printf("Client %s missed heartbeats. Removing from list.\n", addr)
-				clientInfo.RPCClient.Close()
 				delete(clients, addr)
 			}
 		}
@@ -143,20 +128,22 @@ func checkHeartbeats() {
 	}
 }
 
-func broadcastMessageToClients(senderAddr string, message string) {
+func broadcastMessageToClients(message string, ctx context.Context) {
 	clientMutex.RLock()
 	defer clientMutex.RUnlock()
 
-	if message == "heartbeat" { // do not broadcast heartbeat messages
-		return
+	fmt.Printf("Broadcasting message: %s\n", message)
+	senderAddr := ""
+	p, ok := peer.FromContext(ctx)
+	if ok {
+		senderAddr = p.Addr.String()
 	}
 
-	for addr, clientInfo := range clients {
-		if addr != senderAddr {
-			var reply string
-			err := clientInfo.RPCClient.Call("MessageService.BroadcastMessage", &message, &reply)
+	for _, clientInfo := range clients {
+		if clientInfo.RPCClient != nil {
+			_, err := clientInfo.RPCClient.ReceiveMessageFromServer(context.Background(), &proto.MessageFromServerRequest{Message: message, SenderAddress: senderAddr})
 			if err != nil {
-				fmt.Printf("Error broadcasting to client %s: %s\n", addr, err)
+				fmt.Printf("Failed to send message to client: %v\n", err)
 			}
 		}
 	}
