@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+option go_package = "pulsecore/proto";
+
+service GameService {
+    rpc BroadcastMessage(MessageRequest) returns (MessageResponse);
+    rpc SendHeartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+    rpc SendMessageToServer(SendMessageRequest) returns (SendMessageResponse);
+    rpc RegisterClient(RegisterClientRequest) returns (RegisterClientResponse);
+    rpc ReceiveMessageFromServer(MessageFromServerRequest) returns (MessageFromServerResponse);
+}
+
+message MessageRequest {
+    string message = 1;
+}
+
+message MessageResponse {
+    string reply = 1;
+}
+
+message HeartbeatRequest {
+    string clientId = 1;
+}
+
+message HeartbeatResponse {
+    bool success = 1;
+}
+
+message SendMessageRequest {
+  string message = 1;
+  string sender_rpc_address = 2;
+}
+
+message SendMessageResponse {
+    bool success = 1;
+}
+
+message RegisterClientRequest {
+    string rpcAddress = 1;
+}
+
+message RegisterClientResponse {
+    bool success = 1;
+}
+
+message MessageFromServerRequest {
+    string message = 1;
+    string sender_address = 2;
+}
+
+
+message MessageFromServerResponse {
+    bool success = 1;
+}

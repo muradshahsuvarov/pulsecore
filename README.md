@@ -43,10 +43,6 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
 
 PulseCore is free and open-source under the [MIT License](LICENSE). This allows you to use PulseCore in non-commercial projects. However, if you intend to use PulseCore for any commercial purposes, you must obtain a commercial license.
 
-### Commercial License
-
-If you wish to use PulseCore in a commercial game or application, please obtain a commercial license. The commercial license provides additional features, support, and ensures your game scales while supporting PulseCore's continued development. For more details and pricing, please [contact us](mailto:muradshahsuvarov@gmail.com).
-
 **Important**: Unauthorized commercial use without obtaining the appropriate license is strictly prohibited.
 
 ## Documentation
