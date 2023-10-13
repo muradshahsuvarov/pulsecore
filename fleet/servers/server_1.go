@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"net/rpc"
 	"os"
@@ -21,39 +22,64 @@ type ClientInfo struct {
 
 var clients = make(map[string]*ClientInfo)
 var clientMutex = sync.RWMutex{}
+var bufferPool = &sync.Pool{
+	New: func() interface{} {
+		return make([]byte, 1024)
+	},
+}
 
 func main() {
 	serverAddr := "localhost:12345"
-	udpAddr, err := net.ResolveUDPAddr("udp", serverAddr)
+	listener, err := net.Listen("tcp", serverAddr)
 	checkError(err)
-
-	conn, err := net.ListenUDP("udp", udpAddr)
-	checkError(err)
-	defer conn.Close()
+	defer listener.Close()
 
 	fmt.Println("Server started on", serverAddr)
-
-	buffer := make([]byte, 1024)
 
 	go checkHeartbeats()
 
 	for {
-		n, addr, err := conn.ReadFromUDP(buffer)
+		conn, err := listener.Accept()
 		if err != nil {
-			fmt.Println("Error reading from UDP connection:", err)
+			fmt.Println("Error accepting TCP connection:", err)
 			continue
 		}
 
-		message := string(buffer[:n])
-		if message == "heartbeat" {
-			updateHeartbeat(addr.String())
-		} else if strings.HasPrefix(message, "RPC_ADDRESS:") {
-			rpcAddr := strings.TrimPrefix(message, "RPC_ADDRESS:")
-			trackClient(addr.String(), rpcAddr)
-		} else {
-			fmt.Printf("Received message '%s' from %s\n", message, addr)
-			broadcastMessageToClients(addr.String(), message)
+		go handleTCPConnection(conn)
+	}
+}
+
+func handleTCPConnection(conn net.Conn) {
+	defer conn.Close()
+
+	buffer := bufferPool.Get().([]byte)
+	defer bufferPool.Put(buffer)
+
+	for {
+		n, err := conn.Read(buffer)
+		if err != nil {
+			if err != io.EOF {
+				fmt.Println("Error reading from TCP connection:", err)
+			}
+			return
 		}
+
+		message := string(buffer[:n])
+		handleMessage(message, conn)
+	}
+}
+
+func handleMessage(message string, conn net.Conn) {
+	addr := conn.RemoteAddr().String()
+
+	if message == "heartbeat" {
+		updateHeartbeat(addr)
+	} else if strings.HasPrefix(message, "RPC_ADDRESS:") {
+		rpcAddr := strings.TrimPrefix(message, "RPC_ADDRESS:")
+		trackClient(addr, rpcAddr)
+	} else {
+		fmt.Printf("Received message '%s' from %s\n", message, addr)
+		broadcastMessageToClients(addr, message)
 	}
 }
 
@@ -73,7 +99,7 @@ func updateHeartbeat(clientAddr string) {
 	}
 }
 
-func trackClient(udpAddr string, rpcAddr string) {
+func trackClient(tcpAddr string, rpcAddr string) {
 	clientMutex.Lock()
 	defer clientMutex.Unlock()
 
@@ -92,8 +118,7 @@ func trackClient(udpAddr string, rpcAddr string) {
 		return
 	}
 
-	// This ensures that if the client exists, it's updated with the new RPC client and address
-	clients[udpAddr] = &ClientInfo{
+	clients[tcpAddr] = &ClientInfo{
 		LastHeartbeat: time.Now(),
 		RPCClient:     client,
 		RPCAddress:    rpcAddr,

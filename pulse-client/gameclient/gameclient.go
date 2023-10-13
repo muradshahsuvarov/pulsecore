@@ -8,7 +8,7 @@ import (
 
 type Client struct {
 	ServerAddress string
-	Connection    *net.UDPConn
+	Connection    net.Conn
 }
 
 func NewClient(serverAddress string) *Client {
@@ -18,12 +18,7 @@ func NewClient(serverAddress string) *Client {
 }
 
 func (c *Client) Connect() error {
-	addr, err := net.ResolveUDPAddr("udp", c.ServerAddress)
-	if err != nil {
-		return err
-	}
-
-	conn, err := net.DialUDP("udp", nil, addr)
+	conn, err := net.Dial("tcp", c.ServerAddress)
 	if err != nil {
 		return err
 	}
@@ -48,7 +43,7 @@ func (c *Client) Receive() ([]byte, error) {
 	c.Connection.SetReadDeadline(time.Now().Add(5 * time.Second))
 
 	buffer := make([]byte, 1024)
-	n, _, err := c.Connection.ReadFromUDP(buffer)
+	n, err := c.Connection.Read(buffer)
 	if err != nil {
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 			return nil, errors.New("read timeout")

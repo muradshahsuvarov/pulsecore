@@ -7,6 +7,7 @@ import (
 	"net/rpc"
 	"os"
 	"pulsecore/pulse-client/gameclient"
+	"sync"
 	"time"
 )
 
@@ -19,6 +20,8 @@ const (
 	heartbeatInterval = 10 * time.Second
 	rpcPort           = "localhost:12346"
 )
+
+var wg sync.WaitGroup
 
 func main() {
 	client := gameclient.NewClient("localhost:12345")
@@ -76,7 +79,7 @@ func asyncDataReceiver(client *gameclient.Client) {
 
 func connectToServer(client *gameclient.Client) {
 	for {
-		err := client.Connect()
+		err := client.Connect() // This should establish a TCP connection
 		if err != nil {
 			fmt.Println("Error connecting:", err)
 			fmt.Println("Retrying in 5 seconds...")
