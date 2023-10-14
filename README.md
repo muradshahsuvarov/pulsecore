@@ -35,7 +35,17 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
 
    These scripts encapsulate all the required table schemas and database configurations for a hassle-free setup.
 
-3. **Run**: 
+3. **Redis Setup**:
+
+   PulseCore requires Redis for various backend functionalities. Before proceeding further, ensure you have Redis installed and running:
+
+   For installation guidelines, please refer to the official Redis documentation.
+
+   Once installed, you can start Redis using:
+
+   ```
+   redis-server
+   ```
 
 ## Licensing
 
