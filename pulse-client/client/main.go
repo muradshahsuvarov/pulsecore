@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -14,6 +15,7 @@ import (
 	"pulsecore/proto/proto"
 
 	"github.com/go-redis/redis/v8"
+	"github.com/google/uuid"
 	"google.golang.org/grpc"
 )
 
@@ -30,7 +32,21 @@ type Client struct {
 
 var CurrentRoomID int = -1
 
+var ClientName string
+
 func main() {
+
+	u := uuid.New()
+	shortUUID := u.String()[:8]
+	defaultName := fmt.Sprintf("Player_%s", shortUUID)
+
+	flag.StringVar(&ClientName, "name", defaultName, "A name for the client")
+	flag.Parse()
+
+	fmt.Println(strings.Repeat("=", 50))
+	fmt.Println("Client name:", ClientName)
+	fmt.Println(strings.Repeat("=", 50))
+
 	// Set up a connection to the server
 	conn, err := grpc.Dial(serverAddr, grpc.WithInsecure())
 	if err != nil {
@@ -48,6 +64,7 @@ func main() {
 	defer lis.Close()
 	dynamicPort := lis.Addr().(*net.TCPAddr).Port
 	fmt.Printf("Listening on dynamically allocated port: %d\n", dynamicPort)
+	fmt.Println(strings.Repeat("=", 50))
 
 	// Register the client with the dynamically allocated port
 	rpcAddress := fmt.Sprintf("localhost:%d", dynamicPort)
@@ -56,6 +73,7 @@ func main() {
 		log.Fatalf("Failed to register client: %v", err)
 	}
 	fmt.Println("Client registered successfully!")
+	fmt.Println(strings.Repeat("=", 50))
 
 	// Start a go routine to send heartbeats regularly
 	go func() {
@@ -95,6 +113,7 @@ func main() {
 		log.Fatalf("Unable to connect to Redis: %v", err)
 	}
 	fmt.Println("Connected to redis...")
+	fmt.Println(strings.Repeat("=", 50))
 
 	// Send messages in an infinite loop until the user types "exit"
 	reader := bufio.NewReader(os.Stdin)
@@ -126,7 +145,6 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, rdb *re
 			fmt.Print("Enter your message: ")
 			message, _ := reader.ReadString('\n')
 			message = strings.TrimSpace(message)
-
 			msgResp, err := sendMessageToServer(client, message)
 			if err != nil || !msgResp.GetSuccess() {
 				log.Printf("Failed to send message to server: %v", err)
@@ -173,7 +191,7 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, rdb *re
 			}
 		case "4":
 			printSeparator()
-			err := leaveCurrentRoom(rdb)
+			err := leaveCurrentRoom(rdb, dynamicPort)
 			if err != nil {
 				log.Printf("Error leaving room: %v", err)
 			} else {
@@ -200,7 +218,7 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, rdb *re
 						roomID, room["room_name"], room["current_players"],
 						room["max_players"], room["status"])
 				}
-
+				printSeparator()
 			}
 		case "6":
 			printSeparator()
@@ -258,8 +276,9 @@ func broadcastMessage(c proto.GameServiceClient, message string) (*proto.Message
 
 func (c *Client) ReceiveMessageFromServer(ctx context.Context, req *proto.MessageFromServerRequest) (*proto.MessageFromServerResponse, error) {
 	if req.SenderAddress != c.MyAddress && req.SenderAddress != serverAddr {
-		fmt.Printf("Received message from another client: %s\n", req.Message)
+		fmt.Printf("\nReceived message from another client: %s\n", req.Message)
 	}
+	fmt.Println(strings.Repeat("=", 50))
 	return &proto.MessageFromServerResponse{Success: true}, nil
 }
 
@@ -276,7 +295,7 @@ func createRoom(rdb *redis.Client, roomName string, hostId int) (int, error) {
 
 	roomKey := fmt.Sprintf("room:%d", roomID)
 	err := rdb.HMSet(context.Background(), roomKey,
-		"room_id", roomID, // Add this line
+		"room_id", roomID,
 		"room_name", roomName,
 		"host_id", hostId,
 		"max_players", 10,
@@ -293,6 +312,12 @@ func createRoom(rdb *redis.Client, roomName string, hostId int) (int, error) {
 			rdb.Decr(context.Background(), "room_id")
 		}
 		return -1, fmt.Errorf("Error creating room: %v", err)
+	}
+
+	// Add the client name to the room's set of clients' names
+	err = rdb.SAdd(context.Background(), fmt.Sprintf("%s:clients_names", roomKey), ClientName).Err()
+	if err != nil {
+		return -1, fmt.Errorf("Error adding client name to room: %v", err)
 	}
 
 	// Associate the room name with its key in Redis
@@ -324,6 +349,11 @@ func joinRoom(rdb *redis.Client, roomID int, clientID int) error {
 	currentPlayers, err := rdb.HIncrBy(context.Background(), roomKey, "current_players", 1).Result()
 	if err != nil {
 		return fmt.Errorf("Error joining room: %v", err)
+	}
+
+	err = rdb.SAdd(context.Background(), fmt.Sprintf("%s:clients_names", roomKey), ClientName).Err()
+	if err != nil {
+		return fmt.Errorf("Error adding client name to room: %v", err)
 	}
 
 	maxPlayers, err := rdb.HGet(context.Background(), roomKey, "max_players").Int64()
@@ -359,16 +389,21 @@ func leaveRoom(rdb *redis.Client, roomID int) error {
 	return nil
 }
 
-func leaveCurrentRoom(rdb *redis.Client) error {
+func leaveCurrentRoom(rdb *redis.Client, clientID int) error {
+	if CurrentRoomID == -1 {
+		return fmt.Errorf("Client is not in any room")
+	}
+
 	roomKey := fmt.Sprintf("room:%d", CurrentRoomID)
 	exists := rdb.Exists(context.Background(), roomKey).Val()
 
 	if exists == 0 {
+		CurrentRoomID = -1 // Ensure to reset the room ID to -1
 		return fmt.Errorf("Room does not exist")
 	}
 
 	// Remove clientID from the room's set of clients
-	err := rdb.SRem(context.Background(), roomKey+":clients", CurrentRoomID).Err()
+	err := rdb.SRem(context.Background(), roomKey+":clients", clientID).Err()
 	if err != nil {
 		return fmt.Errorf("Error removing client from room: %v", err)
 	}
@@ -379,9 +414,10 @@ func leaveCurrentRoom(rdb *redis.Client) error {
 		return fmt.Errorf("Error decrementing player count: %v", err)
 	}
 
+	rdb.SRem(context.Background(), fmt.Sprintf("room:%d:clients_names", CurrentRoomID), ClientName)
+
 	// Reset CurrentRoomID
 	CurrentRoomID = -1
-
 	return nil
 }
 
@@ -416,6 +452,13 @@ func printRoomData(rdb *redis.Client, roomID int) error {
 
 	for key, value := range roomData {
 		fmt.Printf("%s: %s\n", key, value)
+	}
+
+	clientNames, err := rdb.SMembers(context.Background(), fmt.Sprintf("room:%d:clients_names", roomID)).Result()
+	if err != nil {
+		log.Printf("Error fetching client names: %v", err)
+	} else {
+		fmt.Printf("Players in room: %v\n", strings.Join(clientNames, ", "))
 	}
 
 	fmt.Println(strings.Repeat("=", 50))
