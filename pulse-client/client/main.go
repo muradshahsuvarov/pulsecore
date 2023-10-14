@@ -28,7 +28,7 @@ type Client struct {
 	MyAddress string
 }
 
-var CurrentRoomID int
+var CurrentRoomID int = -1
 
 func main() {
 	// Set up a connection to the server
@@ -80,23 +80,33 @@ func main() {
 	defer rdb.Close()
 
 	// Redis setup
-	go func() {
-		rdb = redis.NewClient(&redis.Options{
-			Addr:     "localhost:6379",
-			Password: "",
-			DB:       0,
-		})
+	rdb = redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "",
+		DB:       0,
+	})
 
-		_, err := rdb.Ping(context.Background()).Result()
-		if err != nil {
-			log.Fatalf("Unable to connect to Redis: %v", err)
-		}
-		fmt.Println("Connected to redis...")
-	}()
+	if rdb.Get(context.Background(), "room_id").Err() == redis.Nil {
+		rdb.Set(context.Background(), "room_id", 0, 0)
+	}
+
+	_, err = rdb.Ping(context.Background()).Result()
+	if err != nil {
+		log.Fatalf("Unable to connect to Redis: %v", err)
+	}
+	fmt.Println("Connected to redis...")
 
 	// Send messages in an infinite loop until the user types "exit"
 	reader := bufio.NewReader(os.Stdin)
+	choiceHandler(reader, client, rdb, dynamicPort)
+
+}
+
+func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, rdb *redis.Client, dynamicPort int) {
 	for {
+		printSeparator := func() {
+			fmt.Println(strings.Repeat("=", 50))
+		}
 		fmt.Println("1: Send a message")
 		fmt.Println("2: Create a room")
 		fmt.Println("3: Join a room")
@@ -112,6 +122,7 @@ func main() {
 
 		switch choice {
 		case "1":
+			printSeparator()
 			fmt.Print("Enter your message: ")
 			message, _ := reader.ReadString('\n')
 			message = strings.TrimSpace(message)
@@ -122,8 +133,12 @@ func main() {
 			} else {
 				fmt.Println("Message sent successfully!")
 			}
-
 		case "2":
+			printSeparator()
+			if CurrentRoomID != -1 {
+				fmt.Println("You are already connected to a room. Please leave the current room before creating a new one.")
+				continue
+			}
 			fmt.Print("Enter room name: ")
 			roomName, _ := reader.ReadString('\n')
 			roomName = strings.TrimSpace(roomName)
@@ -133,53 +148,62 @@ func main() {
 				log.Printf("Error creating room: %v", err)
 			} else {
 				fmt.Println("Room created successfully with ID:", roomID)
-				CurrentRoomID = roomID // Store the room ID in the client struct
+				CurrentRoomID = roomID
 			}
-
 		case "3":
+			printSeparator()
+			if CurrentRoomID != -1 {
+				fmt.Println("You are already connected to a room. Please leave the current room before joining another.")
+				continue
+			}
 			fmt.Print("Enter room ID to join: ")
 			roomIDStr, _ := reader.ReadString('\n')
-			roomID, _ := strconv.Atoi(strings.TrimSpace(roomIDStr))
-
-			if roomID == CurrentRoomID {
-				fmt.Println("You are already in this room and cannot join again.")
+			roomID, err := strconv.Atoi(strings.TrimSpace(roomIDStr))
+			if err != nil {
+				log.Printf("Invalid room ID: %v", err)
 				continue
 			}
 
-			err := joinRoom(rdb, roomID)
+			err = joinRoom(rdb, roomID, dynamicPort)
 			if err != nil {
 				log.Printf("Error joining room: %v", err)
 			} else {
 				fmt.Println("Joined room successfully!")
-				CurrentRoomID = roomID // Update the room ID in the client struct
+				CurrentRoomID = roomID
 			}
-
 		case "4":
-			fmt.Print("Enter room ID to leave: ")
-			roomIDStr, _ := reader.ReadString('\n')
-			roomID, _ := strconv.Atoi(strings.TrimSpace(roomIDStr))
-
-			err := leaveRoom(rdb, roomID)
+			printSeparator()
+			err := leaveCurrentRoom(rdb)
 			if err != nil {
 				log.Printf("Error leaving room: %v", err)
 			} else {
 				fmt.Println("Left room successfully!")
 			}
-
 		case "5":
+			printSeparator()
 			rooms, err := listRooms(rdb)
 			if err != nil {
 				log.Printf("Error listing rooms: %v", err)
 			} else {
 				fmt.Println("Available rooms:")
 				for _, room := range rooms {
-					fmt.Printf("ID: %s, Name: %s, Current Players: %s/%s, Status: %s\n",
-						room["room_id"], room["room_name"], room["current_players"],
+					if room["room_id"] == "" {
+						log.Println("Encountered room with empty room_id")
+						continue
+					}
+					roomID, err := strconv.Atoi(room["room_id"])
+					if err != nil {
+						log.Printf("Error converting room ID: %s\n", err)
+						continue
+					}
+					fmt.Printf("ID: %d, Name: %s, Current Players: %s/%s, Status: %s\n",
+						roomID, room["room_name"], room["current_players"],
 						room["max_players"], room["status"])
 				}
-			}
 
+			}
 		case "6":
+			printSeparator()
 			fmt.Print("Enter room ID to view details: ")
 			roomIDStr, _ := reader.ReadString('\n')
 			roomID, _ := strconv.Atoi(strings.TrimSpace(roomIDStr))
@@ -188,22 +212,20 @@ func main() {
 			if err != nil {
 				log.Printf("Error fetching room data: %v", err)
 			}
-
 		case "7":
+			printSeparator()
 			err := printRoomData(rdb, CurrentRoomID)
 			if err != nil {
 				log.Printf("Error fetching current room data: %v", err)
 			}
-
 		case "8":
+			printSeparator()
 			fmt.Println("Exiting...")
 			return
-
 		default:
 			fmt.Println("Invalid choice. Please try again.")
 		}
 	}
-
 }
 
 func registerClient(c proto.GameServiceClient, rpcAddress string) (*proto.RegisterClientResponse, error) {
@@ -235,26 +257,26 @@ func broadcastMessage(c proto.GameServiceClient, message string) (*proto.Message
 }
 
 func (c *Client) ReceiveMessageFromServer(ctx context.Context, req *proto.MessageFromServerRequest) (*proto.MessageFromServerResponse, error) {
-	// Handle the incoming message here
 	if req.SenderAddress != c.MyAddress && req.SenderAddress != serverAddr {
 		fmt.Printf("Received message from another client: %s\n", req.Message)
 	}
 	return &proto.MessageFromServerResponse{Success: true}, nil
 }
 
-// ---------------ROOM MANAGEMENT-----------------------------
-
 func createRoom(rdb *redis.Client, roomName string, hostId int) (int, error) {
 
+	// Check if a room with the given name already exists
 	existingRoomKey := rdb.Keys(context.Background(), fmt.Sprintf("room_name:%s", roomName)).Val()
 	if len(existingRoomKey) > 0 {
 		return -1, fmt.Errorf("A room with name %s already exists", roomName)
 	}
 
+	// Increment the room_id to get a new room ID
 	roomID := rdb.Incr(context.Background(), "room_id").Val()
 
 	roomKey := fmt.Sprintf("room:%d", roomID)
 	err := rdb.HMSet(context.Background(), roomKey,
+		"room_id", roomID, // Add this line
 		"room_name", roomName,
 		"host_id", hostId,
 		"max_players", 10,
@@ -266,20 +288,37 @@ func createRoom(rdb *redis.Client, roomName string, hostId int) (int, error) {
 	).Err()
 
 	if err != nil {
+		currentValue := rdb.Get(context.Background(), "room_id").Val()
+		if currentValue != "0" {
+			rdb.Decr(context.Background(), "room_id")
+		}
 		return -1, fmt.Errorf("Error creating room: %v", err)
 	}
 
+	// Associate the room name with its key in Redis
 	rdb.Set(context.Background(), fmt.Sprintf("room_name:%s", roomName), roomKey, 0)
 
 	return int(roomID), nil
 }
 
-func joinRoom(rdb *redis.Client, roomID int) error {
+func joinRoom(rdb *redis.Client, roomID int, clientID int) error {
 	roomKey := fmt.Sprintf("room:%d", roomID)
 	exists := rdb.Exists(context.Background(), roomKey).Val()
 
 	if exists == 0 {
 		return fmt.Errorf("Room does not exist")
+	}
+
+	// Check if client is already in the room
+	clientInRoom := rdb.SIsMember(context.Background(), roomKey+":clients", clientID).Val()
+	if clientInRoom {
+		return fmt.Errorf("Client already in the room")
+	}
+
+	// Add clientID to the room's set of clients
+	err := rdb.SAdd(context.Background(), roomKey+":clients", clientID).Err()
+	if err != nil {
+		return fmt.Errorf("Error adding client to room: %v", err)
 	}
 
 	currentPlayers, err := rdb.HIncrBy(context.Background(), roomKey, "current_players", 1).Result()
@@ -295,6 +334,8 @@ func joinRoom(rdb *redis.Client, roomID int) error {
 	if currentPlayers > maxPlayers {
 		// Decrement back as we've already incremented it
 		rdb.HIncrBy(context.Background(), roomKey, "current_players", -1)
+		// Remove the client from the set as the room is full
+		rdb.SRem(context.Background(), roomKey+":clients", clientID)
 		return fmt.Errorf("Room is full")
 	}
 
@@ -318,23 +359,49 @@ func leaveRoom(rdb *redis.Client, roomID int) error {
 	return nil
 }
 
+func leaveCurrentRoom(rdb *redis.Client) error {
+	roomKey := fmt.Sprintf("room:%d", CurrentRoomID)
+	exists := rdb.Exists(context.Background(), roomKey).Val()
+
+	if exists == 0 {
+		return fmt.Errorf("Room does not exist")
+	}
+
+	// Remove clientID from the room's set of clients
+	err := rdb.SRem(context.Background(), roomKey+":clients", CurrentRoomID).Err()
+	if err != nil {
+		return fmt.Errorf("Error removing client from room: %v", err)
+	}
+
+	// Decrement the player count
+	_, err = rdb.HIncrBy(context.Background(), roomKey, "current_players", -1).Result()
+	if err != nil {
+		return fmt.Errorf("Error decrementing player count: %v", err)
+	}
+
+	// Reset CurrentRoomID
+	CurrentRoomID = -1
+
+	return nil
+}
+
 func listRooms(rdb *redis.Client) ([]map[string]string, error) {
+	roomKeys := rdb.Keys(context.Background(), "room:*").Val()
 	var rooms []map[string]string
 
-	iter := rdb.Scan(context.Background(), 0, "room:*", 0).Iterator()
-	for iter.Next(context.Background()) {
-		roomKey := iter.Val()
-		room, err := rdb.HGetAll(context.Background(), roomKey).Result()
+	for _, roomKey := range roomKeys {
+		// Check the type of the key to ensure it is a hash
+		keyType := rdb.Type(context.Background(), roomKey).Val()
+		if keyType != "hash" {
+			log.Printf("Skipping key %s of type %s", roomKey, keyType)
+			continue
+		}
 
+		room, err := rdb.HGetAll(context.Background(), roomKey).Result()
 		if err != nil {
 			return nil, fmt.Errorf("Error reading room details: %v", err)
 		}
-
 		rooms = append(rooms, room)
-	}
-
-	if err := iter.Err(); err != nil {
-		return nil, fmt.Errorf("Error listing rooms: %v", err)
 	}
 
 	return rooms, nil
@@ -347,10 +414,11 @@ func printRoomData(rdb *redis.Client, roomID int) error {
 		return fmt.Errorf("Error fetching room data: %v", err)
 	}
 
-	fmt.Println("Room Data:")
 	for key, value := range roomData {
 		fmt.Printf("%s: %s\n", key, value)
 	}
+
+	fmt.Println(strings.Repeat("=", 50))
 
 	return nil
 }

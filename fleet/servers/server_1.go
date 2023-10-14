@@ -3,15 +3,20 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"pulsecore/proto/proto"
 	"sync"
 	"time"
 
+	"github.com/go-redis/redis/v8"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/peer"
 )
+
+var currentPlayers int
+var playerCountMutex = sync.Mutex{}
 
 const (
 	serverAddr              = "localhost:12345"
@@ -39,7 +44,22 @@ func main() {
 	proto.RegisterGameServiceServer(s, &gameServer{})
 
 	fmt.Println("Server started on", serverAddr)
-	go checkHeartbeats()
+
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "",
+		DB:       0,
+	})
+
+	_, err = rdb.Ping(context.Background()).Result()
+	if err != nil {
+		log.Fatalf("Unable to connect to Redis: %v", err)
+	}
+
+	go checkHeartbeats(rdb)
+
+	// Start the room monitor in a goroutine
+	go monitorRoomsStatus(rdb)
 
 	if err := s.Serve(listener); err != nil {
 		fmt.Println("Failed to serve:", err)
@@ -104,14 +124,19 @@ func trackClient(rpcAddr string) {
 		existingClient.RPCClient = proto.NewGameServiceClient(conn)
 		existingClient.LastHeartbeat = time.Now()
 	} else {
+
 		clients[rpcAddr] = &ClientInfo{
 			LastHeartbeat: time.Now(),
 			RPCClient:     proto.NewGameServiceClient(conn),
 		}
+
+		playerCountMutex.Lock()
+		currentPlayers++
+		playerCountMutex.Unlock()
 	}
 }
 
-func checkHeartbeats() {
+func checkHeartbeats(rdb *redis.Client) {
 	for {
 		time.Sleep(heartbeatInterval)
 		clientMutex.Lock()
@@ -120,12 +145,40 @@ func checkHeartbeats() {
 		for addr, clientInfo := range clients {
 			if currentTime.Sub(clientInfo.LastHeartbeat) > heartbeatInterval*time.Duration(missedHeartbeatsAllowed) {
 				fmt.Printf("Client %s missed heartbeats. Removing from list.\n", addr)
+
+				// Update room in Redis if required
+				roomKey := getRoomKeyForClient(rdb, addr)
+				if roomKey != "" {
+					err := decrementRoomPlayersCount(rdb, roomKey)
+					if err != nil {
+						fmt.Printf("Failed to decrement player count for room %s: %v\n", roomKey, err)
+					}
+				}
+
 				delete(clients, addr)
+
+				playerCountMutex.Lock()
+				currentPlayers--
+				playerCountMutex.Unlock()
 			}
 		}
 
 		clientMutex.Unlock()
 	}
+}
+
+func getRoomKeyForClient(rdb *redis.Client, clientAddr string) string {
+
+	roomKey, err := rdb.Get(context.Background(), "client:"+clientAddr).Result()
+	if err != nil {
+		return ""
+	}
+	return roomKey
+}
+
+func decrementRoomPlayersCount(rdb *redis.Client, roomKey string) error {
+	err := rdb.HIncrBy(context.Background(), roomKey, "current_players", -1).Err()
+	return err
 }
 
 func broadcastMessageToClients(message string, ctx context.Context) {
@@ -144,6 +197,33 @@ func broadcastMessageToClients(message string, ctx context.Context) {
 			_, err := clientInfo.RPCClient.ReceiveMessageFromServer(context.Background(), &proto.MessageFromServerRequest{Message: message, SenderAddress: senderAddr})
 			if err != nil {
 				fmt.Printf("Failed to send message to client: %v\n", err)
+			}
+		}
+	}
+}
+
+func monitorRoomsStatus(rdb *redis.Client) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		iter := rdb.Scan(context.Background(), 0, "room:*", 0).Iterator()
+		for iter.Next(context.Background()) {
+			roomKey := iter.Val()
+
+			currentPlayers, err := rdb.HGet(context.Background(), roomKey, "current_players").Int()
+			if err != nil {
+				fmt.Printf("Failed to get current_players for room %s: %v\n", roomKey, err)
+				continue
+			}
+
+			if currentPlayers == 0 {
+				roomName, _ := rdb.HGet(context.Background(), roomKey, "room_name").Result()
+
+				rdb.Del(context.Background(), roomKey)
+				rdb.Del(context.Background(), fmt.Sprintf("room_name:%s", roomName))
+
+				fmt.Printf("Deleted empty room %s\n", roomKey)
 			}
 		}
 	}
