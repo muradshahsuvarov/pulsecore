@@ -31,3 +31,27 @@ CREATE TABLE server_addresses (
     tag VARCHAR(255) NOT NULL UNIQUE,
     date_added TIMESTAMP NOT NULL DEFAULT current_timestamp
 );
+
+
+-- Create the game_stats table
+CREATE TABLE game_stats (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(id),
+    game_played INT NOT NULL,
+    properties JSONB,
+    last_played TIMESTAMP DEFAULT current_timestamp
+);
+
+-- Create the rooms table
+CREATE TABLE rooms (
+    room_id SERIAL PRIMARY KEY,
+    room_name VARCHAR(50) NOT NULL,
+	host_id INT NOT NULL REFERENCES users(id),
+    max_players INT NOT NULL DEFAULT 10,
+    current_players INT DEFAULT 0,
+	server_id INT NOT NULL REFERENCES server_addresses(id),
+    status VARCHAR(20) NOT NULL DEFAULT 'available',
+    properties JSONB,
+    date_created TIMESTAMP NOT NULL DEFAULT current_timestamp
+);
+
