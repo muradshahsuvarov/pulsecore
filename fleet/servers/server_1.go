@@ -211,6 +211,17 @@ func monitorRoomsStatus(rdb *redis.Client) {
 		for iter.Next(context.Background()) {
 			roomKey := iter.Val()
 
+			// Check if the key type is hash to avoid the WRONGTYPE error
+			keyType, err := rdb.Type(context.Background(), roomKey).Result()
+			if err != nil {
+				fmt.Printf("Failed to get type for key %s: %v\n", roomKey, err)
+				continue
+			}
+			if keyType != "hash" {
+				fmt.Printf("Skipping non-hash key %s\n", roomKey)
+				continue
+			}
+
 			currentPlayers, err := rdb.HGet(context.Background(), roomKey, "current_players").Int()
 			if err != nil {
 				fmt.Printf("Failed to get current_players for room %s: %v\n", roomKey, err)
