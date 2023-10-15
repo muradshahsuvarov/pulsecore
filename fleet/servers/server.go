@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"pulsecore/proto/proto"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,7 +21,7 @@ var playerCountMutex = sync.Mutex{}
 
 const (
 	serverAddr              = "localhost:12345"
-	heartbeatInterval       = 10 * time.Second
+	heartbeatInterval       = 1 * time.Second
 	missedHeartbeatsAllowed = 3
 )
 
@@ -153,6 +154,25 @@ func checkHeartbeats(rdb *redis.Client) {
 					if err != nil {
 						fmt.Printf("Failed to decrement player count for room %s: %v\n", roomKey, err)
 					}
+
+					// Retrieve all rpc_addresses
+					ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+					defer cancel()
+					rpcAddresses, err := rdb.SMembers(ctx, fmt.Sprintf("%s:rpc_addresses", roomKey)).Result()
+					if err != nil {
+						fmt.Printf("Failed to retrieve rpc_addresses from room %s: %v\n", roomKey, err)
+					}
+
+					// Find and remove the rpc_address that contains addr as a substring
+					for _, rpcAddr := range rpcAddresses {
+						if strings.Contains(rpcAddr, addr) {
+							err = rdb.SRem(ctx, fmt.Sprintf("%s:rpc_addresses", roomKey), rpcAddr).Err()
+							if err != nil {
+								fmt.Printf("Failed to remove rpc address %s from room %s: %v\n", rpcAddr, roomKey, err)
+							}
+							break // assuming there's only one matching rpcAddr
+						}
+					}
 				}
 
 				delete(clients, addr)
@@ -168,16 +188,43 @@ func checkHeartbeats(rdb *redis.Client) {
 }
 
 func getRoomKeyForClient(rdb *redis.Client, clientAddr string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
 
-	roomKey, err := rdb.Get(context.Background(), "client:"+clientAddr).Result()
-	if err != nil {
-		return ""
+	iter := rdb.Scan(ctx, 0, "room:*", 0).Iterator()
+	for iter.Next(ctx) {
+		roomKey := iter.Val()
+
+		// Retrieve all RPC addresses with user names from the set
+		rpcAddresses, err := rdb.SMembers(ctx, fmt.Sprintf("%s:rpc_addresses", roomKey)).Result()
+		if err != nil {
+			fmt.Printf("Error retrieving RPC addresses for %s:rpc_addresses: %v\n", roomKey, err)
+			continue // go to the next iteration
+		}
+
+		// Check if clientAddr is a substring in any of the rpc_addresses set members
+		for _, addrWithUser := range rpcAddresses {
+			if strings.Contains(addrWithUser, clientAddr) {
+				return roomKey
+			}
+		}
 	}
-	return roomKey
+
+	// Check for iterator errors
+	if err := iter.Err(); err != nil {
+		fmt.Printf("Error retrieving keys from Redis: %v\n", err)
+	}
+
+	// Not found
+	fmt.Printf("No room key found for client: %s\n", clientAddr)
+	return ""
 }
 
 func decrementRoomPlayersCount(rdb *redis.Client, roomKey string) error {
-	err := rdb.HIncrBy(context.Background(), roomKey, "current_players", -1).Err()
+	_, err := rdb.HIncrBy(context.Background(), roomKey, "current_players", -1).Result()
+	if err != nil {
+		return fmt.Errorf("Error decrementing player count: %v", err)
+	}
 	return err
 }
 
@@ -203,7 +250,7 @@ func broadcastMessageToClients(message string, ctx context.Context) {
 }
 
 func monitorRoomsStatus(rdb *redis.Client) {
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -215,16 +262,19 @@ func monitorRoomsStatus(rdb *redis.Client) {
 			keyType, err := rdb.Type(context.Background(), roomKey).Result()
 			if err != nil {
 				fmt.Printf("Failed to get type for key %s: %v\n", roomKey, err)
+				strings.Repeat("=", 50)
 				continue
 			}
 			if keyType != "hash" {
 				fmt.Printf("Skipping non-hash key %s\n", roomKey)
+				strings.Repeat("=", 50)
 				continue
 			}
 
 			currentPlayers, err := rdb.HGet(context.Background(), roomKey, "current_players").Int()
 			if err != nil {
 				fmt.Printf("Failed to get current_players for room %s: %v\n", roomKey, err)
+				strings.Repeat("=", 50)
 				continue
 			}
 
@@ -235,6 +285,8 @@ func monitorRoomsStatus(rdb *redis.Client) {
 				rdb.Del(context.Background(), fmt.Sprintf("room_name:%s", roomName))
 
 				fmt.Printf("Deleted empty room %s\n", roomKey)
+
+				fmt.Println(strings.Repeat("=", 50))
 			}
 		}
 	}

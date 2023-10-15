@@ -22,7 +22,7 @@ import (
 const (
 	serverAddr        = "localhost:12345"
 	exitCmd           = "exit"
-	heartbeatInterval = 10 * time.Second
+	heartbeatInterval = 1 * time.Second
 )
 
 type Client struct {
@@ -117,11 +117,11 @@ func main() {
 
 	// Send messages in an infinite loop until the user types "exit"
 	reader := bufio.NewReader(os.Stdin)
-	choiceHandler(reader, client, rdb, dynamicPort)
+	choiceHandler(reader, client, rdb, dynamicPort, rpcAddress)
 
 }
 
-func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, rdb *redis.Client, dynamicPort int) {
+func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, rdb *redis.Client, dynamicPort int, rpcAddress string) {
 	for {
 		printSeparator := func() {
 			fmt.Println(strings.Repeat("=", 50))
@@ -161,7 +161,7 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, rdb *re
 			roomName, _ := reader.ReadString('\n')
 			roomName = strings.TrimSpace(roomName)
 
-			roomID, err := createRoom(rdb, roomName, dynamicPort)
+			roomID, err := createRoom(rdb, roomName, dynamicPort, rpcAddress)
 			if err != nil {
 				log.Printf("Error creating room: %v", err)
 			} else {
@@ -182,7 +182,7 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, rdb *re
 				continue
 			}
 
-			err = joinRoom(rdb, roomID, dynamicPort)
+			err = joinRoom(rdb, roomID, dynamicPort, rpcAddress)
 			if err != nil {
 				log.Printf("Error joining room: %v", err)
 			} else {
@@ -191,7 +191,7 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, rdb *re
 			}
 		case "4":
 			printSeparator()
-			err := leaveCurrentRoom(rdb, dynamicPort)
+			err := leaveCurrentRoom(rdb, dynamicPort, rpcAddress)
 			if err != nil {
 				log.Printf("Error leaving room: %v", err)
 			} else {
@@ -282,7 +282,7 @@ func (c *Client) ReceiveMessageFromServer(ctx context.Context, req *proto.Messag
 	return &proto.MessageFromServerResponse{Success: true}, nil
 }
 
-func createRoom(rdb *redis.Client, roomName string, hostId int) (int, error) {
+func createRoom(rdb *redis.Client, roomName string, hostId int, rpcAddress string) (int, error) {
 
 	// Check if a room with the given name already exists
 	existingRoomKey := rdb.Keys(context.Background(), fmt.Sprintf("room_name:%s", roomName)).Val()
@@ -315,7 +315,7 @@ func createRoom(rdb *redis.Client, roomName string, hostId int) (int, error) {
 	}
 
 	// Add the client name to the room's set of clients' names
-	err = rdb.SAdd(context.Background(), fmt.Sprintf("%s:clients_names", roomKey), ClientName).Err()
+	err = rdb.SAdd(context.Background(), fmt.Sprintf("%s:rpc_addresses", roomKey), rpcAddress+";"+ClientName).Err()
 	if err != nil {
 		return -1, fmt.Errorf("Error adding client name to room: %v", err)
 	}
@@ -326,7 +326,7 @@ func createRoom(rdb *redis.Client, roomName string, hostId int) (int, error) {
 	return int(roomID), nil
 }
 
-func joinRoom(rdb *redis.Client, roomID int, clientID int) error {
+func joinRoom(rdb *redis.Client, roomID int, clientID int, rpcAddress string) error {
 	roomKey := fmt.Sprintf("room:%d", roomID)
 	exists := rdb.Exists(context.Background(), roomKey).Val()
 
@@ -351,7 +351,7 @@ func joinRoom(rdb *redis.Client, roomID int, clientID int) error {
 		return fmt.Errorf("Error joining room: %v", err)
 	}
 
-	err = rdb.SAdd(context.Background(), fmt.Sprintf("%s:clients_names", roomKey), ClientName).Err()
+	err = rdb.SAdd(context.Background(), fmt.Sprintf("%s:rpc_addresses", roomKey), rpcAddress+";"+ClientName).Err()
 	if err != nil {
 		return fmt.Errorf("Error adding client name to room: %v", err)
 	}
@@ -389,7 +389,7 @@ func leaveRoom(rdb *redis.Client, roomID int) error {
 	return nil
 }
 
-func leaveCurrentRoom(rdb *redis.Client, clientID int) error {
+func leaveCurrentRoom(rdb *redis.Client, clientID int, rpcAddress string) error {
 	if CurrentRoomID == -1 {
 		return fmt.Errorf("Client is not in any room")
 	}
@@ -414,7 +414,7 @@ func leaveCurrentRoom(rdb *redis.Client, clientID int) error {
 		return fmt.Errorf("Error decrementing player count: %v", err)
 	}
 
-	rdb.SRem(context.Background(), fmt.Sprintf("room:%d:clients_names", CurrentRoomID), ClientName)
+	rdb.SRem(context.Background(), fmt.Sprintf("room:%d:rpc_addresses", CurrentRoomID), rpcAddress+";"+ClientName)
 
 	// Reset CurrentRoomID
 	CurrentRoomID = -1
@@ -454,11 +454,11 @@ func printRoomData(rdb *redis.Client, roomID int) error {
 		fmt.Printf("%s: %s\n", key, value)
 	}
 
-	clientNames, err := rdb.SMembers(context.Background(), fmt.Sprintf("room:%d:clients_names", roomID)).Result()
+	rpcName, err := rdb.SMembers(context.Background(), fmt.Sprintf("room:%d:rpc_addresses", roomID)).Result()
 	if err != nil {
 		log.Printf("Error fetching client names: %v", err)
 	} else {
-		fmt.Printf("Players in room: %v\n", strings.Join(clientNames, ", "))
+		fmt.Printf("Players in room: %v\n", strings.Join(rpcName, ", "))
 	}
 
 	fmt.Println(strings.Repeat("=", 50))
