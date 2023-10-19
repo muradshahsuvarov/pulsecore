@@ -20,7 +20,6 @@ import (
 )
 
 const (
-	serverAddr        = ""
 	exitCmd           = "exit"
 	heartbeatInterval = 1 * time.Second
 )
@@ -34,10 +33,11 @@ var CurrentRoomID int = -1
 
 var ClientName string
 
+// Server that client connects to
+var serverAddr string
+
 func main() {
 
-	// Creating a unique client name if name (arg) is not provided
-	var serverAddr string
 	var redisAddr string
 
 	u := uuid.New()
@@ -293,6 +293,7 @@ func broadcastMessage(c proto.GameServiceClient, message string) (*proto.Message
 
 func (c *Client) ReceiveMessageFromServer(ctx context.Context, req *proto.MessageFromServerRequest) (*proto.MessageFromServerResponse, error) {
 	if req.SenderAddress != c.MyAddress && req.SenderAddress != serverAddr {
+		fmt.Println(strings.Repeat("=", 50))
 		fmt.Printf("\nReceived message from another client: %s\n", req.Message)
 	}
 	fmt.Println(strings.Repeat("=", 50))

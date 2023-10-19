@@ -46,11 +46,11 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
 
 2. Run Redis Container
    ```
-   docker run --name <container-name> --network <shared-network> -p <desired-port>:<server-port> redis:latest
+   docker run -d --name <container-name> --network <shared-network> -p <desired-port>:<server-port> redis:latest
    ```
    Example:
    ```
-   docker run --name redis01 --network pulsecore_network -p 6379:6379 redis:latest
+   docker run -d --name redis01 --network pulsecore_network -p 6379:6379 redis:latest
    ```
 
 ### Server Setup
@@ -62,7 +62,7 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
 
 2. Build the Docker image for the server:
     ```bash
-    docker build -t pulsecore-server .
+    docker build -t pulsecore_server -f servers/Dockerfile .
     ```
 
 3. Run the server:
@@ -84,16 +84,16 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
 
 2. Build the Docker image for the client:
     ```bash
-    docker build -t pulsecore-client .
+    docker build -t pulsecore_client -f pulse-client/Dockerfile 
     ```
 
 3. Run the client (repeat for multiple clients):
     ```bash
-    docker run -it --network <shared-network> -p <desired-port>:<server-port> pulsecore_client --server=<container-name>:<container-port> --redis-server=<redis-container>:<redis-port> --name=Murad
+    docker run -it --name pulsecore_client_Murad --network <shared-network> -p <desired-port>:<server-port> pulsecore_client --server=<container-name>:<container-port> --redis-server=<redis-container>:<redis-port> --name=Murad
     ```
     Example:
     ```
-    docker run -it --network pulsecore_network -p 8001-9000 pulsecore_client --server=pulsecore_server_0:12345 --redis-server=redis01:6379 --name=Murad
+    docker run -it --name pulsecore_client_Murad --network pulsecore_network -p 8001-9000 pulsecore_client --server=pulsecore_server_0:12345 --redis-server=redis01:6379 --name=Murad
     ```
 
 ### Generation of Golang client and server based on proto
