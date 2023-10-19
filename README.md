@@ -89,12 +89,23 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
 
 3. Run the client (repeat for multiple clients):
     ```bash
-    docker run -it --network <shared-docker-network> --name <container-name> -p <desired-port>:<server-port> pulsecore_client --server=<server-container-name>:<server-port> 
+    docker run -it --network <shared-network> -p <desired-port>:<server-port> pulsecore_client --server=<container-name>:<container-port> --redis-server=<redis-container>:<redis-port> --name=Murad
     ```
     Example:
     ```
-    docker run -it --network pulsecore_network --name pulsecore_client_Murad -p 8001-9000:8001-9000 pulsecore_client --server=pulsecore_server_0:12345 --redis-server=redis01:6379 --name=Murad
+    docker run -it --network pulsecore_network -p 8001-9000 pulsecore_client --server=pulsecore_server_0:12345 --redis-server=redis01:6379 --name=Murad
     ```
+
+### Generation of Golang client and server based on proto
+   1. Navigate to the client directory:
+    ```bash
+    cd proto/
+    ```
+
+   2. Run the following command
+   ```
+   protoc --go_out=./proto/ --go_opt=paths=./proto/ --go-grpc_out=./proto/ --go-grpc_opt=./proto/ message.proto
+   ```
 
 ### IMPROTANT
 
