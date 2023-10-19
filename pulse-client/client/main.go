@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	serverAddr        = "localhost:12345"
+	serverAddr        = ""
 	exitCmd           = "exit"
 	heartbeatInterval = 1 * time.Second
 )
@@ -36,12 +36,24 @@ var ClientName string
 
 func main() {
 
+	// Creating a unique client name if name (arg) is not provided
+	var serverAddr string
+	var redisAddr string
+
 	u := uuid.New()
 	shortUUID := u.String()[:8]
 	defaultName := fmt.Sprintf("Player_%s", shortUUID)
 
+	// Parsing provided terminal arguments
+	flag.StringVar(&serverAddr, "server", "pulsecore_server_0:12345", "Specify server address you want to connect with")
+	flag.StringVar(&redisAddr, "redis-server", "", "Specify your redis address.\nOn local machine it is usually localhost:6379")
 	flag.StringVar(&ClientName, "name", defaultName, "A name for the client")
 	flag.Parse()
+
+	if redisAddr == "" {
+		log.Fatal("Redis server address required for room management within the server!\n",
+			"On local machines it is usually localhost:6379")
+	}
 
 	fmt.Println(strings.Repeat("=", 50))
 	fmt.Println("Client name:", ClientName)
@@ -67,7 +79,12 @@ func main() {
 	fmt.Println(strings.Repeat("=", 50))
 
 	// Register the client with the dynamically allocated port
-	rpcAddress := fmt.Sprintf("localhost:%d", dynamicPort)
+	hostName, err := os.Hostname()
+	if err != nil {
+		log.Fatalf("Failed to get the hostname: %v", err)
+	}
+	rpcAddress := fmt.Sprintf("%s:%d", hostName, dynamicPort)
+
 	regResp, err := registerClient(client, rpcAddress)
 	if err != nil || !regResp.GetSuccess() {
 		log.Fatalf("Failed to register client: %v", err)
@@ -99,7 +116,7 @@ func main() {
 
 	// Redis setup
 	rdb = redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
+		Addr:     redisAddr, // E.g. redis01:6379
 		Password: "",
 		DB:       0,
 	})

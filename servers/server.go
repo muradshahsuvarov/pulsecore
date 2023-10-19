@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -20,7 +21,6 @@ var currentPlayers int
 var playerCountMutex = sync.Mutex{}
 
 const (
-	serverAddr              = "localhost:12345"
 	heartbeatInterval       = 1 * time.Second
 	missedHeartbeatsAllowed = 3
 )
@@ -38,6 +38,23 @@ var clients = make(map[string]*ClientInfo)
 var clientMutex = sync.RWMutex{}
 
 func main() {
+
+	var serverAddr string
+	var redisAddr string
+
+	flag.StringVar(&serverAddr, "server", "", "Specify your server address")
+	flag.StringVar(&redisAddr, "redis-server", "", "Specify your redis address.\nOn local machine it is usually localhost:6379")
+	flag.Parse()
+
+	if serverAddr == "" {
+		log.Fatal("Server address required!\n")
+	}
+
+	if redisAddr == "" {
+		log.Fatal("Redis server address required for room management within the server!\n",
+			"On local machines it is usually localhost:6379")
+	}
+
 	listener, err := net.Listen("tcp", serverAddr)
 	checkError(err)
 
@@ -47,7 +64,7 @@ func main() {
 	fmt.Println("Server started on", serverAddr)
 
 	rdb := redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
+		Addr:     redisAddr,
 		Password: "",
 		DB:       0,
 	})

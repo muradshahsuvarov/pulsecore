@@ -1,6 +1,6 @@
 module pulsecore
 
-go 1.21.1
+go 1.17
 
 require (
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
@@ -8,7 +8,7 @@ require (
 	github.com/google/uuid v1.3.1
 	github.com/jackc/pgx/v4 v4.18.1
 	golang.org/x/crypto v0.11.0
-	google.golang.org/grpc v1.58.3
+	google.golang.org/grpc v1.41.0
 	google.golang.org/protobuf v1.31.0
 )
 
