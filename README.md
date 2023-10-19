@@ -19,7 +19,7 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
    git clone https://github.com/muradshahsuvarov/pulsecore
    ```
 
-2. **Database Setup**:
+2. **Database Setup for the PulseCore SaaS**:
    
    Before running PulseCore, ensure your database is properly configured. To set up the necessary PostgreSQL tables and schemas, simply run the provided setup script:
 
@@ -35,17 +35,71 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
 
    These scripts encapsulate all the required table schemas and database configurations for a hassle-free setup.
 
-3. **Redis Setup**:
+## Deployment & Scaling
 
-   PulseCore requires Redis for various backend functionalities. Before proceeding further, ensure you have Redis installed and running:
+### Redis Setup
 
-   For installation guidelines, please refer to the official Redis documentation.
-
-   Once installed, you can start Redis using:
-
+1. Pull Redis Image
    ```
-   redis-server
+   docker pull redis
    ```
+
+2. Run Redis Container
+   ```
+   docker run --name <container-name> --network <shared-network> -p <desired-port>:<server-port> redis:latest
+   ```
+   Example:
+   ```
+   docker run --name redis01 --network pulsecore_network -p 6379:6379 redis:latest
+   ```
+
+### Server Setup
+
+1. Navigate to the server directory:
+    ```bash
+    cd pulsecore/servers
+    ```
+
+2. Build the Docker image for the server:
+    ```bash
+    docker build -t pulsecore-server .
+    ```
+
+3. Run the server:
+    ```bash
+    docker run -d -e SERVER_ADDR=<server-address>:<server-port> -e REDIS_ADDR=<redis-address> --network <shared-docker-network> -p <desired-port>:<server-port> --name <container-name> pulsecore_server:latest
+    ```
+    Example:
+    ```
+    docker run -d -e SERVER_ADDR="0.0.0.0:12345" -e REDIS_ADDR="redis01:6379" --network pulsecore_network -p 12345:12345 --name pulsecore_server_0 pulsecore_server:latest
+    ```
+    Note: `0.0.0.0` allows the service to accept connections from any IP address on any network interface of the machine.
+
+### Client Setup
+
+1. Navigate to the client directory:
+    ```bash
+    cd pulsecore/pulse-client/client
+    ```
+
+2. Build the Docker image for the client:
+    ```bash
+    docker build -t pulsecore-client .
+    ```
+
+3. Run the client (repeat for multiple clients):
+    ```bash
+    docker run -it --network <shared-docker-network> --name <container-name> -p <desired-port>:<server-port> pulsecore_client --server=<server-container-name>:<server-port> 
+    ```
+    Example:
+    ```
+    docker run -it --network pulsecore_network --name pulsecore_client_Murad -p 8001-9000:8001-9000 pulsecore_client --server=pulsecore_server_0:12345 --redis-server=redis01:6379 --name=Murad
+    ```
+
+### IMPROTANT
+
+   Make sure Redis, Server, and Clients are deployed on the same network
+
 
 ## Licensing
 
@@ -58,10 +112,6 @@ PulseCore is free and open-source under the [MIT License](LICENSE). This allows 
 ## Documentation
 
 Explore our comprehensive [Documentation](/docs) for API references, user guides, and interactive tutorials.
-
-## Deployment & Scaling
-
-Designed for the cloud! Deploy using Docker and orchestrate with Kubernetes for global scale. Detailed guides available in the [`deployment`](/deployment) directory.
 
 ## Contribute to PulseCore
 
