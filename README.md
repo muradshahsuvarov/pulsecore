@@ -95,6 +95,12 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
     ```
     docker run -it --name pulsecore_client_Murad --network pulsecore_network -p 8001-9000 pulsecore_client --server=pulsecore_server_0:12345 --redis-server=redis01:6379 --name=Murad
     ```
+	
+4. To run client locally use:
+
+	```
+	go run main.go --server 127.0.0.1:12345 --redis-server 127.0.0.1:6379
+	```
 
 ### Generation of Golang client and server based on proto
    1. Navigate to the client directory:
