@@ -1,3 +1,5 @@
+<img src="./assets/logo.jpg" alt="PulseCore Logo" width="200"/>
+
 # PulseCore: The Open-Source Game Server
 
 PulseCore is an innovative, open-source game server built to revolutionize the way multiplayer games interact with backend infrastructure. PulseCore brings together the efficiency of RPC with the robustness of Apache Kafka, all while integrating AI functionalities to deliver high-speed and immersive gaming experiences.
