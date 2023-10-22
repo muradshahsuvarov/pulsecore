@@ -39,6 +39,18 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
 
 ## Deployment & Scaling
 
+
+### Proto/RPC Setup
+
+1. Navigate to the messsage.proto directory
+
+2. Run the following command:
+    ```
+    protoc --go_out=./proto/ --go-grpc_out=./proto/ message.proto
+    ```
+3. The files are generated into the proto subdirectory of proto.
+
+
 ### Redis Setup
 
 1. Pull Redis Image
