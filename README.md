@@ -42,7 +42,7 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
 
 ### Proto/RPC Setup
 
-1. Navigate to the messsage.proto directory
+1. Navigate to the message.proto directory
 
 2. Run the following command:
     ```
