@@ -160,7 +160,8 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, rdb *re
 		fmt.Println("6: List rooms")
 		fmt.Println("7: View room details")
 		fmt.Println("8: Current Room")
-		fmt.Println("9: Exit")
+		fmt.Println("9: Room-specific message")
+		fmt.Println("10: Exit")
 		fmt.Print("Enter your choice: ")
 
 		choice, _ := reader.ReadString('\n')
@@ -278,12 +279,40 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, rdb *re
 			}
 		case "9":
 			printSeparator()
+			if CurrentRoomID == -1 {
+				fmt.Println("You are not connected to any room. Please join a room first before sending a room-specific message.")
+				continue
+			}
+			printSeparator()
+			fmt.Print("Enter your room-specific message: ")
+			message, _ := reader.ReadString('\n')
+			message = strings.TrimSpace(message)
+			msgResp, err := sendRoomMessageToServer(client, CurrentRoomID, message)
+			if err != nil {
+				log.Printf("Failed to send room message to server due to an error: %v", err)
+			} else if !msgResp.GetSuccess() {
+				log.Printf("Failed to send room message to server: Message not successful.")
+			} else {
+				fmt.Println("Room message sent successfully!")
+			}
+
+		case "10":
+			printSeparator()
 			fmt.Println("Exiting...")
 			return
 		default:
 			fmt.Println("Invalid choice. Please try again.")
 		}
 	}
+}
+
+func sendRoomMessageToServer(client proto.GameServiceClient, roomID int, message string) (*proto.MessageResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	return client.SendMessageToRoom(ctx, &proto.MessageToRoomRequest{
+		RoomID:  strconv.Itoa(roomID),
+		Message: message,
+	})
 }
 
 func registerClient(c proto.GameServiceClient, rpcAddress string) (*proto.RegisterClientResponse, error) {
@@ -374,6 +403,7 @@ func createRoom(rdb *redis.Client, roomName string, hostId int, rpcAddress strin
 
 func joinAvailableRoom(rdb *redis.Client, dynamicPort int, rpcAddress string) (int, error) {
 	// Get the room with the lowest current player count from the sorted set
+	// Runtime complexity is O(log(N))
 	roomKey := rdb.ZRangeWithScores(context.Background(), "rooms", 0, 0).Val()
 
 	// Extract roomID and current player count
@@ -561,3 +591,9 @@ func printRoomData(rdb *redis.Client, roomID int) error {
 }
 
 // ---------------ROOM MANAGEMENT-----------------------------
+
+func (gc *Client) BroadcastMessage(ctx context.Context, req *proto.MessageRequest) (*proto.MessageResponse, error) {
+	fmt.Println(strings.Repeat("=", 50))
+	fmt.Println("Received message:", req.GetMessage())
+	return &proto.MessageResponse{Reply: "Received the message"}, nil
+}
