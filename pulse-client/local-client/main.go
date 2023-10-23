@@ -33,8 +33,9 @@ var CurrentRoomID int = -1
 
 var ClientName string
 
-// Server that client connects to
 var serverAddr string
+
+var MyRPCAddress string
 
 func main() {
 
@@ -142,6 +143,8 @@ func main() {
 
 	// Send messages in an infinite loop until the user types "exit"
 	reader := bufio.NewReader(os.Stdin)
+
+	MyRPCAddress = rpcAddress + ";" + ClientName
 	choiceHandler(reader, client, rdb, dynamicPort, rpcAddress)
 
 }
@@ -161,7 +164,10 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, rdb *re
 		fmt.Println("7: View room details")
 		fmt.Println("8: Current Room")
 		fmt.Println("9: Room-specific message")
-		fmt.Println("10: Exit")
+		fmt.Println("10: Change the host")
+		fmt.Println("11: My RPC Address")
+		fmt.Println("12: Exit")
+		printSeparator()
 		fmt.Print("Enter your choice: ")
 
 		choice, _ := reader.ReadString('\n')
@@ -189,7 +195,7 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, rdb *re
 			roomName, _ := reader.ReadString('\n')
 			roomName = strings.TrimSpace(roomName)
 
-			roomID, err := createRoom(rdb, roomName, dynamicPort, rpcAddress)
+			roomID, err := createRoom(rdb, roomName, rpcAddress)
 			if err != nil {
 				log.Printf("Error creating room: %v", err)
 			} else {
@@ -214,10 +220,9 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, rdb *re
 			if err != nil {
 				log.Printf("Error joining room: %v", err)
 			} else {
-				fmt.Println("Joined room successfully!")
 				CurrentRoomID = roomID
 			}
-		case "4": // New case for auto-joining available room
+		case "4":
 			printSeparator()
 			if CurrentRoomID != -1 {
 				fmt.Println("You are already connected to a room. Please leave the current room before joining another.")
@@ -228,7 +233,6 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, rdb *re
 			if err != nil {
 				log.Printf("Error auto-joining room: %v", err)
 			} else {
-				fmt.Println("Joined room successfully!")
 				CurrentRoomID = roomID
 			}
 		case "5":
@@ -295,12 +299,26 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, rdb *re
 			} else {
 				fmt.Println("Room message sent successfully!")
 			}
-
 		case "10":
+			printSeparator()
+			fmt.Println("Enter a new host:")
+			newHostRPCAddress, _ := reader.ReadString('\n')
+			err := transferHost(rdb, CurrentRoomID, MyRPCAddress, newHostRPCAddress)
+			if err != nil {
+				fmt.Println("Error happed during the host transfer...")
+				fmt.Printf("Error meesage: %s\n", err.Error())
+				continue
+			}
+		case "11":
+			printSeparator()
+			fmt.Println(MyRPCAddress)
+
+		case "12":
 			printSeparator()
 			fmt.Println("Exiting...")
 			return
 		default:
+			printSeparator()
 			fmt.Println("Invalid choice. Please try again.")
 		}
 	}
@@ -354,7 +372,7 @@ func (c *Client) ReceiveMessageFromServer(ctx context.Context, req *proto.Messag
 	return &proto.MessageFromServerResponse{Success: true}, nil
 }
 
-func createRoom(rdb *redis.Client, roomName string, hostId int, rpcAddress string) (int, error) {
+func createRoom(rdb *redis.Client, roomName string, rpcAddress string) (int, error) {
 
 	// Check if a room with the given name already exists
 	existingRoomKey := rdb.Keys(context.Background(), fmt.Sprintf("room_name:%s", roomName)).Val()
@@ -369,12 +387,12 @@ func createRoom(rdb *redis.Client, roomName string, hostId int, rpcAddress strin
 	err := rdb.HMSet(context.Background(), roomKey,
 		"room_id", roomID,
 		"room_name", roomName,
-		"host_id", hostId,
 		"max_players", "10",
 		"current_players", 1,
 		"server_id", serverAddr,
 		"status", "available",
 		"properties", "{}",
+		"host_rpc_address", rpcAddress+";"+ClientName,
 		"date_created", time.Now().Format(time.RFC3339),
 	).Err()
 
@@ -399,6 +417,46 @@ func createRoom(rdb *redis.Client, roomName string, hostId int, rpcAddress strin
 	rdb.ZAdd(context.Background(), "rooms", &redis.Z{Member: fmt.Sprintf("room:%d", roomID), Score: 1})
 
 	return int(roomID), nil
+}
+
+// Transfer the host role to another member
+func transferHost(rdb *redis.Client, roomID int, currentRpcAddress string, newHostRpcAddress string) error {
+
+	roomKey := fmt.Sprintf("room:%d", roomID)
+
+	// Get the current host rpc address
+	currentHostRpcAddress, err := rdb.HGet(context.Background(), roomKey, "host_rpc_address").Result()
+	if err != nil {
+		return fmt.Errorf("Error fetching current host: %v", err)
+	}
+
+	fmt.Println("currentHostRpcAddress: ", currentHostRpcAddress)
+	fmt.Println("currentRpcAddress: ", currentRpcAddress)
+
+	// Verify if the current user (based on rpcAddress) is the host
+	if currentHostRpcAddress != currentRpcAddress {
+		return fmt.Errorf("You are not the host of this room")
+	}
+
+	// Verify if the current new host is not the current one
+	if currentRpcAddress == newHostRpcAddress {
+		return fmt.Errorf("You can not transfer the host to yourself")
+	}
+
+	// Check if the new host rpc address is in the room
+	trimmedNewHostRpcAddress := strings.TrimSpace(newHostRpcAddress)
+	isMember := rdb.SIsMember(context.Background(), fmt.Sprintf("%s:rpc_addresses", roomKey), trimmedNewHostRpcAddress).Val()
+	if !isMember {
+		return fmt.Errorf("The provided new host rpc address is not a member of the room")
+	}
+
+	// Set the new host rpc address
+	err = rdb.HSet(context.Background(), roomKey, "host_rpc_address", trimmedNewHostRpcAddress).Err()
+	if err != nil {
+		return fmt.Errorf("Error transferring host role: %v", err)
+	}
+
+	return nil
 }
 
 func joinAvailableRoom(rdb *redis.Client, dynamicPort int, rpcAddress string) (int, error) {
@@ -438,7 +496,6 @@ func joinAvailableRoom(rdb *redis.Client, dynamicPort int, rpcAddress string) (i
 	rdb.ZIncrBy(context.Background(), "rooms", 1, fmt.Sprintf("room:%d", roomID))
 
 	CurrentRoomID = roomID
-	fmt.Println("Joined room successfully!")
 	return roomID, nil
 }
 
@@ -490,6 +547,7 @@ func joinRoom(rdb *redis.Client, roomID int, clientID int, rpcAddress string) er
 		return fmt.Errorf("Room is full")
 	}
 
+	fmt.Println("Joined room successfully!")
 	return nil
 }
 

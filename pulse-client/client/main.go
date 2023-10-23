@@ -220,7 +220,6 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, rdb *re
 			if err != nil {
 				log.Printf("Error auto-joining room: %v", err)
 			} else {
-				fmt.Println("Joined room successfully!")
 				CurrentRoomID = roomID
 			}
 		case "5":
