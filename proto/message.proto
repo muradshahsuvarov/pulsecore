@@ -8,6 +8,7 @@ service GameService {
     rpc SendMessageToServer(SendMessageRequest) returns (SendMessageResponse);
     rpc RegisterClient(RegisterClientRequest) returns (RegisterClientResponse);
     rpc ReceiveMessageFromServer(MessageFromServerRequest) returns (MessageFromServerResponse);
+    rpc SendMessageToRoom(MessageToRoomRequest) returns (MessageResponse);
 }
 
 message MessageRequest {
@@ -15,7 +16,8 @@ message MessageRequest {
 }
 
 message MessageResponse {
-    string reply = 1;
+    bool success = 1;
+    string reply = 2;
 }
 
 message HeartbeatRequest {
@@ -51,4 +53,9 @@ message MessageFromServerRequest {
 
 message MessageFromServerResponse {
     bool success = 1;
+}
+
+message MessageToRoomRequest {
+    string roomID = 1;
+    string message = 2;
 }

@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"pulsecore/proto/proto"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -32,6 +34,7 @@ type ClientInfo struct {
 
 type gameServer struct {
 	proto.UnimplementedGameServiceServer
+	rdb *redis.Client
 }
 
 var clients = make(map[string]*ClientInfo)
@@ -58,15 +61,17 @@ func main() {
 	listener, err := net.Listen("tcp", serverAddr)
 	checkError(err)
 
-	s := grpc.NewServer()
-	proto.RegisterGameServiceServer(s, &gameServer{})
-
 	fmt.Println("Server started on", serverAddr)
 
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     redisAddr,
 		Password: "",
 		DB:       0,
+	})
+
+	s := grpc.NewServer()
+	proto.RegisterGameServiceServer(s, &gameServer{
+		rdb: rdb,
 	})
 
 	_, err = rdb.Ping(context.Background()).Result()
@@ -106,6 +111,73 @@ func (gs *gameServer) SendMessageToServer(ctx context.Context, req *proto.SendMe
 func (gs *gameServer) RegisterClient(ctx context.Context, req *proto.RegisterClientRequest) (*proto.RegisterClientResponse, error) {
 	trackClient(req.GetRpcAddress())
 	return &proto.RegisterClientResponse{Success: true}, nil
+}
+
+func (gs *gameServer) SendMessageToRoom(ctx context.Context, req *proto.MessageToRoomRequest) (*proto.MessageResponse, error) {
+
+	if gs.rdb == nil {
+		log.Println("gs.rdb is null!")
+		return nil, errors.New("Redis client is not initialized")
+	}
+
+	// Identify the clients in the room
+	roomIDStr := req.GetRoomID()
+	roomID, err := strconv.ParseInt(roomIDStr, 10, 64)
+	if err != nil {
+		// Handle error: e.g., return an error response indicating invalid room ID format
+		return nil, fmt.Errorf("Invalid room ID format: %v", err)
+	}
+	roomKey := fmt.Sprintf("room:%d", roomID)
+
+	// Retrieve all rpc_addresses for the room
+	rpcAddresses, err := gs.rdb.SMembers(ctx, fmt.Sprintf("%s:rpc_addresses", roomKey)).Result()
+	if err != nil {
+		log.Printf("Error fetching RPC addresses for room %s: %v", roomKey, err)
+		return nil, err
+	}
+
+	// Check if rpcAddresses are empty (This will help debug if no rpcAddresses are found for a given room)
+	if len(rpcAddresses) == 0 {
+		log.Printf("No RPC addresses found for room: %s", roomKey)
+		return &proto.MessageResponse{Reply: "No clients in the room"}, nil
+	}
+
+	// Broadcast message to all clients in the room
+	successCount := 0
+	for _, rpcAddrWithClientName := range rpcAddresses {
+		rpcAddrComponents := strings.Split(rpcAddrWithClientName, ";")
+		if len(rpcAddrComponents) > 0 {
+			actualRpcAddr := rpcAddrComponents[0]
+
+			// Use actualRpcAddr for further operations
+			if clientInfo, exists := clients[actualRpcAddr]; exists && clientInfo.RPCClient != nil {
+				_, err := clientInfo.RPCClient.BroadcastMessage(ctx, &proto.MessageRequest{Message: req.GetMessage()})
+				if err != nil {
+					log.Printf("Failed to send message to client at %s: %v", actualRpcAddr, err)
+				} else {
+					successCount++
+				}
+			} else {
+				log.Printf("Client at %s either doesn't exist or has a nil RPCClient.", actualRpcAddr)
+			}
+		} else {
+			log.Printf("Invalid RPC address format in room: %s", roomKey)
+		}
+	}
+
+	log.Printf("Sent message to %d/%d clients in room %s", successCount, len(rpcAddresses), roomKey)
+
+	if successCount > 0 {
+		return &proto.MessageResponse{
+			Success: true,
+			Reply:   "Message sent to room",
+		}, nil
+	} else {
+		return &proto.MessageResponse{
+			Success: false,
+			Reply:   "Failed to send message to any client in the room",
+		}, nil
+	}
 }
 
 func checkError(err error) {
