@@ -39,18 +39,6 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
 
 ## Deployment & Scaling
 
-
-### Proto/RPC Setup
-
-1. Navigate to the message.proto directory
-
-2. Run the following command:
-    ```
-    protoc --go_out=./proto/ --go-grpc_out=./proto/ message.proto
-    ```
-3. The files are generated into the proto subdirectory of proto.
-
-
 ### Redis Setup
 
 1. Pull Redis Image
@@ -115,6 +103,7 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
 	```
 	go run main.go --server 127.0.0.1:12345 --redis-server 127.0.0.1:6379
 	```
+
 
 ### Generation of Golang client and server based on proto
    1. Navigate to the client directory:

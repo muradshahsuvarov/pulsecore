@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"os"
 	"pulsecore/proto/proto"
@@ -226,6 +227,40 @@ func trackClient(rpcAddr string) {
 	}
 }
 
+func reassignHostIfInactive(rdb *redis.Client, roomID int, currentHostRpcAddress string) error {
+	roomKey := fmt.Sprintf("room:%d", roomID)
+
+	// Retrieve all rpc_addresses for the room
+	rpcAddresses, err := rdb.SMembers(context.Background(), fmt.Sprintf("%s:rpc_addresses", roomKey)).Result()
+	if err != nil {
+		return fmt.Errorf("Error fetching RPC addresses for room %s: %v", roomKey, err)
+	}
+
+	// Filter out the current host from the list of rpcAddresses
+	var potentialNewHosts []string
+	for _, addr := range rpcAddresses {
+		if strings.Split(addr, ";")[0] != currentHostRpcAddress {
+			potentialNewHosts = append(potentialNewHosts, addr)
+		}
+	}
+
+	// If there are no potential new hosts, delete the room and return
+	if len(potentialNewHosts) == 0 {
+		return fmt.Errorf("Room %s doesn't have any player, room deletion pending...", roomKey)
+	}
+
+	// Randomly pick a new host from the list of potential new hosts
+	newHostIndex := rand.Intn(len(potentialNewHosts))
+	newHost := potentialNewHosts[newHostIndex]
+
+	// Set the new host rpc address in Redis
+	err = rdb.HSet(context.Background(), roomKey, "host_rpc_address", newHost).Err()
+	if err != nil {
+		return fmt.Errorf("Error setting new host: %v", err)
+	}
+	return nil
+}
+
 func checkHeartbeats(rdb *redis.Client) {
 	for {
 		time.Sleep(heartbeatInterval)
@@ -253,13 +288,40 @@ func checkHeartbeats(rdb *redis.Client) {
 					}
 
 					// Find and remove the rpc_address that contains addr as a substring
+					var hostRemoved bool
 					for _, rpcAddr := range rpcAddresses {
 						if strings.Contains(rpcAddr, addr) {
 							err = rdb.SRem(ctx, fmt.Sprintf("%s:rpc_addresses", roomKey), rpcAddr).Err()
 							if err != nil {
 								fmt.Printf("Failed to remove rpc address %s from room %s: %v\n", rpcAddr, roomKey, err)
 							}
+							// Check if the removed client was the host
+							hostRpcAddress, _ := rdb.HGet(ctx, roomKey, "host_rpc_address").Result()
+							if strings.Split(hostRpcAddress, ";")[0] == addr {
+								hostRemoved = true
+							}
 							break // assuming there's only one matching rpcAddr
+						}
+					}
+
+					// Get room id
+					roomKey := getRoomKeyForClient(rdb, addr)
+					var roomID int
+					if roomKey != "" {
+						roomIDStr := strings.Split(roomKey, ":")[1]
+						roomID, err = strconv.Atoi(roomIDStr)
+						if err != nil {
+							// Handle error converting roomIDStr to int
+							fmt.Printf("Error converting roomIDStr to int: %v\n", err)
+							continue
+						}
+					}
+
+					// If host was removed, reassign a new host
+					if hostRemoved {
+						err = reassignHostIfInactive(rdb, roomID, addr) // Adjusted this line
+						if err != nil {
+							fmt.Printf("Failed to reassign host for room %s: %v\n", roomKey, err)
 						}
 					}
 				}
