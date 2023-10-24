@@ -1,5 +1,10 @@
 -- Create the pulsecoredb database
-CREATE DATABASE pulsecoredb;
+DO $$ BEGIN
+    CREATE DATABASE pulsecoredb;
+EXCEPTION
+    WHEN duplicate_database THEN
+    RAISE NOTICE 'Database already exists';
+END $$;
 
 -- Switch to the pulsecoredb database
 \c pulsecoredb;
@@ -27,7 +32,7 @@ CREATE TABLE applications (
 CREATE TABLE server_addresses (
     id SERIAL PRIMARY KEY,
     address VARCHAR(255) NOT NULL UNIQUE,
-    app_id INT NOT NULL REFERENCES applications(id),
+    app_identifier VARCHAR(100) NOT NULL REFERENCES applications(app_identifier),
     tag VARCHAR(255) NOT NULL UNIQUE,
     date_added TIMESTAMP NOT NULL DEFAULT current_timestamp
 );
