@@ -114,7 +114,7 @@ func authenticateUser(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"token": token})
+	c.JSON(http.StatusOK, gin.H{"token": token, "user_id": user.ID})
 }
 
 func registerUser(c *gin.Context) {
@@ -141,13 +141,15 @@ func registerUser(c *gin.Context) {
 		return
 	}
 
-	resp, err := http.Post(databaseService, "application/json", strings.NewReader(fmt.Sprintf(`{
+	resp, err := http.Post(databaseService+"/records", "application/json", strings.NewReader(fmt.Sprintf(`{
 		"table_name": "users",
 		"records": [{
 			"email": "%s",
 			"password": "%s"
 		}]
 	}`, request.Email, hashedPassword)))
+
+	fmt.Println("resp.StatusCode:    ", resp.StatusCode)
 
 	if err != nil || resp.StatusCode != http.StatusCreated {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error registering the user."})
@@ -392,7 +394,7 @@ func createServer(c *gin.Context) {
 
 	var request struct {
 		Address string `json:"address"`
-		AppID   int    `json:"app_id"`
+		AppID   string `json:"app_identifier"`
 		Tag     string `json:"tag"`
 	}
 
@@ -405,10 +407,10 @@ func createServer(c *gin.Context) {
 		"table_name": "server_addresses",
 		"records": []map[string]interface{}{
 			{
-				"address":    request.Address,
-				"app_id":     request.AppID,
-				"tag":        request.Tag,
-				"date_added": time.Now().Format(time.RFC3339), // Ensuring the date is in a standardized format
+				"address":        request.Address,
+				"app_identifier": request.AppID,
+				"tag":            request.Tag,
+				"date_added":     time.Now().Format(time.RFC3339), // Ensuring the date is in a standardized format
 			},
 		},
 	})

@@ -1,8 +1,8 @@
 {
 	"hostname": "localhost",
 	"port": "5432",
-	"username": "",
-	"password": "",
+	"username": "postgres",
+	"password": "Muradikov_21",
 	"dbname": "pulsecoredb",
 	 "allowedTables": {
         "applications": {

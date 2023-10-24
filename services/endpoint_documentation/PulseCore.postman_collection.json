@@ -1,0 +1,425 @@
+{
+	"info": {
+		"_postman_id": "e6fe2150-3bf0-4683-bddf-c718bfc44047",
+		"name": "PulseCore",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "9501436"
+	},
+	"item": [
+		{
+			"name": "DB UPDATE RECORDS",
+			"request": {
+				"method": "PUT",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "[\r\n    {\r\n        \"ids\": [\"10\", \"9\"],\r\n        \"table_name\": \"users\",\r\n        \"fields\": {\r\n            \"password\": \"Muradikov_2122\"\r\n        }\r\n    },\r\n    {\r\n        \"ids\": [\"16\"],\r\n        \"table_name\": \"users\",\r\n        \"fields\": {\r\n            \"password\": \"kejvfkwfkw\"\r\n        }\r\n    }\r\n]\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8091/database/records",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8091",
+					"path": [
+						"database",
+						"records"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "DB Check Health",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8091/database/health",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8091",
+					"path": [
+						"database",
+						"health"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "DB DELETE RECORDS",
+			"request": {
+				"method": "DELETE",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"table_name\": \"server_addresses\",\r\n  \"conditions\": {\r\n    \"id\": \"249999\"\r\n  }\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8091/database/records",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8091",
+					"path": [
+						"database",
+						"records"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "DB CREATE RECORDS",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"table_name\": \"users\",\r\n    \"records\": [\r\n        {\r\n            \"email\": \"muradshahsuvarov9877@gmail.com\",\r\n            \"password\": \"Muradikov_21\",\r\n            \"date_created\": \"2023-10-05T12:00:00Z\"\r\n        },\r\n        {\r\n            \"email\": \"surkhayshahsuvarov9898@gmail.com\",\r\n            \"password\": \"suriko175yek\",\r\n            \"date_created\": \"2023-10-05T12:00:00Z\"\r\n        }\r\n    ]\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8091/database/records",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8091",
+					"path": [
+						"database",
+						"records"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "DB GET RECORDS",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"table_name\": \"users\",\r\n    \"columns\": [\"email\", \"id\", \"password\"],\r\n    \"conditions\": {\r\n        \"email\": \"murador98@gmail.com\"\r\n    }\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8091/database/query",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8091",
+					"path": [
+						"database",
+						"query"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "MW AUTHENTICATE",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"email\": \"murador98@gmail.com\",\r\n    \"password\": \"muradikov21\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8093/middleware/authenticate",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8093",
+					"path": [
+						"middleware",
+						"authenticate"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "MW REGISTER",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"email\": \"murador98@gmail.com\",\r\n    \"password\": \"muradikov21\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8093/middleware/register",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8093",
+					"path": [
+						"middleware",
+						"register"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "MW CHECK AUTHENTICATED",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6Im11cmFkb3I5OEBnbWFpbC5jb20iLCJleHAiOjE2OTY3MjE5MTV9.HKUU0a5Upr9fC4_iMENlBcDGsCJrhmsggBM-CwDvAzw",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "http://localhost:8093/middleware/authenticated",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8093",
+					"path": [
+						"middleware",
+						"authenticated"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "MW CREATE APPLICATION",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6Im11cmFkb3I5OEBnbWFpbC5jb20iLCJleHAiOjE2OTY3MjE5MTV9.HKUU0a5Upr9fC4_iMENlBcDGsCJrhmsggBM-CwDvAzw",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"app_name\": \"War of Thieves\",\r\n    \"app_description\": \"2D online multiplayer game made by Murad Shahsuvarov\",\r\n    \"user_id\": 9\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8093/middleware/application",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8093",
+					"path": [
+						"middleware",
+						"application"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "MW UPDATE",
+			"request": {
+				"method": "PUT",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6Im11cmFkb3I5OEBnbWFpbC5jb20iLCJleHAiOjE2OTY3ODk1ODh9.anxlY7NVqeIOz5EDnJPRXeEj-ULEw00bLf9dzmPDuBY",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"app_id\": \"2\",\r\n    \"app_name\": \"War of Thieves\",\r\n    \"app_description\": \"2D online game by 3 BOX GAMES\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8093/middleware/application",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8093",
+					"path": [
+						"middleware",
+						"application"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "MW DELETE APPLICATION",
+			"request": {
+				"method": "DELETE",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6Im11cmFkb3I5OEBnbWFpbC5jb20iLCJleHAiOjE2OTY3MjU1NjJ9._H3vmITApx21OJKWOzsvnqqwjX-FxuChZIGPRxFlWSg",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"app_id\": \"1\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8093/middleware/application",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8093",
+					"path": [
+						"middleware",
+						"application"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "MW HEALTH",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8093/middleware/health",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8093",
+					"path": [
+						"middleware",
+						"health"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "MW CREATE SERVER",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6InNvbWV1c2VyQGdtYWlsLmNvbSIsImV4cCI6MTY5ODE5ODY0OH0.TB2HMqnb9kd9G6-Cd5HVPxpAyP9Ge86J7VKqDd8I6D4",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "\r\n{\r\n    \"address\": \"127.0.0.1:12345\",\r\n    \"app_identifier\": \"b5864d14-08e6-4e3e-82a5-33b91d2bb985\",\r\n    \"tag\": \"ca\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8093/middleware/server",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8093",
+					"path": [
+						"middleware",
+						"server"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "DELETE SERVER",
+			"request": {
+				"method": "DELETE",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6Im11cmFkb3I5OEBnbWFpbC5jb20iLCJleHAiOjE2OTY3OTQ1OTh9.AvJHz4qZkhhSp49lYk8ngySfnEwpGByEpAOSa5feBXc",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"server_id\": 17\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8093/middleware/server",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8093",
+					"path": [
+						"middleware",
+						"server"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

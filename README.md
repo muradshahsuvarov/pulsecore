@@ -21,7 +21,13 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
    git clone https://github.com/muradshahsuvarov/pulsecore
    ```
 
-2. **Database Setup for the PulseCore SaaS**:
+2. **Endpoint Documentation**
+
+    - Endpoint documentation can be accessible locally and remotely.
+    - You can import the postam based documentation from the following subdirectory: `.\services\endpoint_documentations`
+    - The remote version can be accessed from here: https://documenter.getpostman.com/view/9501436/2s9YRCXrn3
+
+3. **Database Setup for the PulseCore SaaS**:
    
    Before running PulseCore, ensure your database is properly configured. To set up the necessary PostgreSQL tables and schemas, simply run the provided setup script:
 
@@ -36,6 +42,13 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
    ```
 
    These scripts encapsulate all the required table schemas and database configurations for a hassle-free setup.
+
+4. **Services Setup**
+
+    Before running the gRPC related service you have to run the database and middleware service on your local machine
+
+    - Execute the following command: `go run ./main.go` in `./services/database/src` and `./services/middleware/src`
+    - Follow the endpoint description and create a user, authenticate, create an application, create a server (127.0.0.1:12345)
 
 ## Deployment & Scaling
 
@@ -101,7 +114,11 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
 4. To run client locally use:
 
 	```
-	go run main.go --server 127.0.0.1:12345 --redis-server 127.0.0.1:6379
+    go run main.go --app <REGISTERED_APPLICATION_ID> --server <REGISTERED_SERVER_ADDRESS> --redis-server 127.0.0.1:6379
+    ```
+
+    ```
+	go run main.go --app b5864d14-08e6-4e3e-82a5-33b91d2bb985 --server 127.0.0.1:12345 --redis-server 127.0.0.1:6379
 	```
 
 

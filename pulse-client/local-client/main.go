@@ -2,11 +2,15 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -35,6 +39,8 @@ var ClientName string
 
 var serverAddr string
 
+var applicationId string
+
 var MyRPCAddress string
 
 func main() {
@@ -53,12 +59,29 @@ func main() {
 	// In case the server is deployed in a remote cloud, then use a proper external ip and the port
 	// of the service.
 	flag.StringVar(&serverAddr, "server", "pulsecore_server_0:12345", "Specify server address you want to connect with")
+	flag.StringVar(&applicationId, "app", "", "Specify your registered applicaiton")
 
 	// For redis-server you would use 127.0.0.1:6379 if it's running on Docker locally
 	// If it's deployed in a remote cloud system, then get it's appropriate external id and the port
 	flag.StringVar(&redisAddr, "redis-server", "", "Specify your redis address.\nOn local machine it is usually localhost:6379")
 	flag.StringVar(&ClientName, "name", defaultName, "A name for the client")
 	flag.Parse()
+
+	if applicationId == "" {
+		log.Fatal("Application id can not be empty")
+	}
+
+	// Check if applicationId exists in the database
+	appExists := checkAppIdExists(applicationId)
+	if !appExists {
+		log.Fatal("No such app identifier registered")
+	}
+
+	// Check if the provided server is associated with the applicationId
+	serverExists := checkServerAssociated(applicationId, serverAddr)
+	if !serverExists {
+		log.Fatal("There's no such server registered with this application id")
+	}
 
 	if redisAddr == "" {
 		log.Fatal("Redis server address required for room management within the server!\n",
@@ -147,6 +170,77 @@ func main() {
 	MyRPCAddress = rpcAddress + ";" + ClientName
 	choiceHandler(reader, client, rdb, dynamicPort, rpcAddress)
 
+}
+
+func checkAppIdExists(appId string) bool {
+	requestData := struct {
+		TableName  string                 `json:"table_name"`
+		Columns    []string               `json:"columns"`
+		Conditions map[string]interface{} `json:"conditions"`
+	}{
+		TableName:  "applications",
+		Conditions: map[string]interface{}{"app_identifier": appId},
+	}
+
+	resp, err := sendPostRequest("http://localhost:8091/database/records/query", requestData)
+	if err != nil {
+		log.Fatal("Failed to make a request to the database: ", err)
+	}
+
+	var results []map[string]interface{}
+	if err := json.Unmarshal(resp, &results); err != nil {
+		log.Fatal("Failed to decode the response: ", err)
+	}
+
+	return len(results) > 0
+}
+
+func checkServerAssociated(appId, server string) bool {
+	requestData := struct {
+		TableName  string                 `json:"table_name"`
+		Columns    []string               `json:"columns"`
+		Conditions map[string]interface{} `json:"conditions"`
+	}{
+		TableName:  "server_addresses",
+		Conditions: map[string]interface{}{"app_identifier": appId},
+	}
+
+	resp, err := sendPostRequest("http://localhost:8091/database/records/query", requestData)
+	if err != nil {
+		log.Fatal("Failed to make a request to the database: ", err)
+	}
+
+	var results []map[string]interface{}
+	if err := json.Unmarshal(resp, &results); err != nil {
+		log.Fatal("Failed to decode the response: ", err)
+	}
+
+	for _, result := range results {
+		if result["address"] == server {
+			return true
+		}
+	}
+	return false
+}
+
+func sendPostRequest(url string, data interface{}) ([]byte, error) {
+	payload, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(payload))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	return body, nil
 }
 
 func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, rdb *redis.Client, dynamicPort int, rpcAddress string) {
@@ -429,9 +523,6 @@ func transferHost(rdb *redis.Client, roomID int, currentRpcAddress string, newHo
 	if err != nil {
 		return fmt.Errorf("Error fetching current host: %v", err)
 	}
-
-	fmt.Println("currentHostRpcAddress: ", currentHostRpcAddress)
-	fmt.Println("currentRpcAddress: ", currentRpcAddress)
 
 	// Verify if the current user (based on rpcAddress) is the host
 	if currentHostRpcAddress != currentRpcAddress {
