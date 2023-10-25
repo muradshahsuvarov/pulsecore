@@ -95,7 +95,7 @@ func fetchRecords(c *gin.Context) {
 	if len(whereClauses) > 0 {
 		whereClause = fmt.Sprintf("WHERE %s", strings.Join(whereClauses, " AND "))
 	}
-
+    
 	query := fmt.Sprintf("SELECT %s FROM %s %s", selectColumns, requestData.TableName, whereClause)
 
 	rows, err := db.Query(context.Background(), query, values...)

@@ -9,6 +9,7 @@ service GameService {
     rpc RegisterClient(RegisterClientRequest) returns (RegisterClientResponse);
     rpc ReceiveMessageFromServer(MessageFromServerRequest) returns (MessageFromServerResponse);
     rpc SendMessageToRoom(MessageToRoomRequest) returns (MessageResponse);
+    rpc SolveChallenge(ChallengeRequest) returns (ChallengeResponse);
 }
 
 message MessageRequest {
@@ -26,6 +27,7 @@ message HeartbeatRequest {
 
 message HeartbeatResponse {
     bool success = 1;
+    string challengeQuestion = 2;
 }
 
 message SendMessageRequest {
@@ -58,4 +60,12 @@ message MessageFromServerResponse {
 message MessageToRoomRequest {
     string roomID = 1;
     string message = 2;
+}
+
+message ChallengeRequest {
+    string Question = 1;
+}
+
+message ChallengeResponse {
+    string Answer = 1;
 }

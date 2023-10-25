@@ -25,6 +25,7 @@ const (
 	GameService_RegisterClient_FullMethodName           = "/GameService/RegisterClient"
 	GameService_ReceiveMessageFromServer_FullMethodName = "/GameService/ReceiveMessageFromServer"
 	GameService_SendMessageToRoom_FullMethodName        = "/GameService/SendMessageToRoom"
+	GameService_SolveChallenge_FullMethodName           = "/GameService/SolveChallenge"
 )
 
 // GameServiceClient is the client API for GameService service.
@@ -37,6 +38,7 @@ type GameServiceClient interface {
 	RegisterClient(ctx context.Context, in *RegisterClientRequest, opts ...grpc.CallOption) (*RegisterClientResponse, error)
 	ReceiveMessageFromServer(ctx context.Context, in *MessageFromServerRequest, opts ...grpc.CallOption) (*MessageFromServerResponse, error)
 	SendMessageToRoom(ctx context.Context, in *MessageToRoomRequest, opts ...grpc.CallOption) (*MessageResponse, error)
+	SolveChallenge(ctx context.Context, in *ChallengeRequest, opts ...grpc.CallOption) (*ChallengeResponse, error)
 }
 
 type gameServiceClient struct {
@@ -101,6 +103,15 @@ func (c *gameServiceClient) SendMessageToRoom(ctx context.Context, in *MessageTo
 	return out, nil
 }
 
+func (c *gameServiceClient) SolveChallenge(ctx context.Context, in *ChallengeRequest, opts ...grpc.CallOption) (*ChallengeResponse, error) {
+	out := new(ChallengeResponse)
+	err := c.cc.Invoke(ctx, GameService_SolveChallenge_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // GameServiceServer is the server API for GameService service.
 // All implementations must embed UnimplementedGameServiceServer
 // for forward compatibility
@@ -111,6 +122,7 @@ type GameServiceServer interface {
 	RegisterClient(context.Context, *RegisterClientRequest) (*RegisterClientResponse, error)
 	ReceiveMessageFromServer(context.Context, *MessageFromServerRequest) (*MessageFromServerResponse, error)
 	SendMessageToRoom(context.Context, *MessageToRoomRequest) (*MessageResponse, error)
+	SolveChallenge(context.Context, *ChallengeRequest) (*ChallengeResponse, error)
 	mustEmbedUnimplementedGameServiceServer()
 }
 
@@ -135,6 +147,9 @@ func (UnimplementedGameServiceServer) ReceiveMessageFromServer(context.Context, 
 }
 func (UnimplementedGameServiceServer) SendMessageToRoom(context.Context, *MessageToRoomRequest) (*MessageResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SendMessageToRoom not implemented")
+}
+func (UnimplementedGameServiceServer) SolveChallenge(context.Context, *ChallengeRequest) (*ChallengeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SolveChallenge not implemented")
 }
 func (UnimplementedGameServiceServer) mustEmbedUnimplementedGameServiceServer() {}
 
@@ -257,6 +272,24 @@ func _GameService_SendMessageToRoom_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _GameService_SolveChallenge_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ChallengeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GameServiceServer).SolveChallenge(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GameService_SolveChallenge_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GameServiceServer).SolveChallenge(ctx, req.(*ChallengeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // GameService_ServiceDesc is the grpc.ServiceDesc for GameService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -287,6 +320,10 @@ var GameService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SendMessageToRoom",
 			Handler:    _GameService_SendMessageToRoom_Handler,
+		},
+		{
+			MethodName: "SolveChallenge",
+			Handler:    _GameService_SolveChallenge_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
