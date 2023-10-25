@@ -124,13 +124,36 @@ func main() {
 	fmt.Println("Client registered successfully!")
 	fmt.Println(strings.Repeat("=", 50))
 
-	// Start a go routine to send heartbeats regularly
+	done := make(chan bool)
+
+	// Start a go routine to send heartbeats regularly and handle challenges
 	go func() {
 		for {
 			time.Sleep(heartbeatInterval) // Wait for heartbeatInterval duration
-			_, err := sendHeartbeat(client, rpcAddress)
-			if err != nil {
-				log.Printf("Failed to send heartbeat: %v", err)
+
+			resp, err := sendHeartbeat(client, rpcAddress)
+			if err != nil || !resp.GetSuccess() {
+				log.Printf("Failed to send heartbeat or server rejected heartbeat: %v", err)
+			}
+
+			if resp.GetChallengeQuestion() != "" {
+				if !solveChallenge(resp.GetChallengeQuestion()) {
+					log.Println("Failed to solve server's challenge. Stopping heartbeats.")
+					done <- true
+					return
+				}
+			}
+		}
+	}()
+
+	go func() {
+		for {
+			select {
+			case <-done:
+				log.Println("Terminating the main program due to failed challenge.")
+				os.Exit(1)
+			default:
+				time.Sleep(time.Millisecond * 100)
 			}
 		}
 	}()
@@ -170,6 +193,13 @@ func main() {
 	MyRPCAddress = rpcAddress + ";" + ClientName
 	choiceHandler(reader, client, rdb, dynamicPort, rpcAddress)
 
+}
+
+func solveChallenge(challengeQuestion string) bool {
+	if challengeQuestion == "What is 2 + 2?" {
+		return true
+	}
+	return false
 }
 
 func checkAppIdExists(appId string) bool {
@@ -464,6 +494,11 @@ func (c *Client) ReceiveMessageFromServer(ctx context.Context, req *proto.Messag
 	fmt.Println("\n")
 	fmt.Println(strings.Repeat("=", 50))
 	return &proto.MessageFromServerResponse{Success: true}, nil
+}
+
+func (c *Client) SolveChallenge(ctx context.Context, req *proto.ChallengeRequest) (*proto.ChallengeResponse, error) {
+	answer := "4"
+	return &proto.ChallengeResponse{Answer: answer}, nil
 }
 
 func createRoom(rdb *redis.Client, roomName string, rpcAddress string) (int, error) {

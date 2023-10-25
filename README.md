@@ -130,7 +130,7 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
 
    2. Run the following command
    ```
-   protoc --go_out=./proto/ --go_opt=paths=./proto/ --go-grpc_out=./proto/ --go-grpc_opt=./proto/ message.proto
+   protoc --go_out=./proto/ --go_opt=paths=source_relative --go-grpc_out=./proto/ --go-grpc_opt=paths=source_relative message.proto
    ```
 
 ### IMPROTANT

@@ -97,7 +97,8 @@ func (gs *gameServer) BroadcastMessage(ctx context.Context, req *proto.MessageRe
 
 func (gs *gameServer) SendHeartbeat(ctx context.Context, req *proto.HeartbeatRequest) (*proto.HeartbeatResponse, error) {
 	updateHeartbeat(req.GetClientId())
-	return &proto.HeartbeatResponse{Success: true}, nil
+	challenge := "What is 2 + 2?"
+	return &proto.HeartbeatResponse{Success: true, ChallengeQuestion: challenge}, nil
 }
 
 func (gs *gameServer) SendMessageToServer(ctx context.Context, req *proto.SendMessageRequest) (*proto.SendMessageResponse, error) {
@@ -261,6 +262,89 @@ func reassignHostIfInactive(rdb *redis.Client, roomID int, currentHostRpcAddress
 	return nil
 }
 
+func challengeClient(client *ClientInfo, challengeQuestion string) bool {
+	expectedResponse := "4" // This can also be stored in a map with the challenge as the key.
+
+	response, err := client.RPCClient.SolveChallenge(context.Background(), &proto.ChallengeRequest{Question: challengeQuestion})
+	if err != nil {
+		log.Printf("Failed to challenge client: %v", err)
+		return false
+	}
+
+	if response.Answer != expectedResponse {
+		return false
+	}
+
+	return true
+}
+
+func removeClient(addr string, rdb *redis.Client, msg string) bool {
+	fmt.Printf(msg)
+
+	// Update room in Redis if required
+	roomKey := getRoomKeyForClient(rdb, addr)
+	if roomKey != "" {
+		err := decrementRoomPlayersCount(rdb, roomKey)
+		if err != nil {
+			fmt.Printf("Failed to decrement player count for room %s: %v\n", roomKey, err)
+		}
+
+		// Retrieve all rpc_addresses
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		rpcAddresses, err := rdb.SMembers(ctx, fmt.Sprintf("%s:rpc_addresses", roomKey)).Result()
+		if err != nil {
+			fmt.Printf("Failed to retrieve rpc_addresses from room %s: %v\n", roomKey, err)
+		}
+
+		// Find and remove the rpc_address that contains addr as a substring
+		var hostRemoved bool
+		for _, rpcAddr := range rpcAddresses {
+			if strings.Contains(rpcAddr, addr) {
+				err = rdb.SRem(ctx, fmt.Sprintf("%s:rpc_addresses", roomKey), rpcAddr).Err()
+				if err != nil {
+					fmt.Printf("Failed to remove rpc address %s from room %s: %v\n", rpcAddr, roomKey, err)
+				}
+				// Check if the removed client was the host
+				hostRpcAddress, _ := rdb.HGet(ctx, roomKey, "host_rpc_address").Result()
+				if strings.Split(hostRpcAddress, ";")[0] == addr {
+					hostRemoved = true
+				}
+				break // assuming there's only one matching rpcAddr
+			}
+		}
+
+		// Get room id
+		roomKey := getRoomKeyForClient(rdb, addr)
+		var roomID int
+		if roomKey != "" {
+			roomIDStr := strings.Split(roomKey, ":")[1]
+			roomID, err = strconv.Atoi(roomIDStr)
+			if err != nil {
+				// Handle error converting roomIDStr to int
+				fmt.Printf("Error converting roomIDStr to int: %v\n", err)
+				return true
+			}
+		}
+
+		// If host was removed, reassign a new host
+		if hostRemoved {
+			err = reassignHostIfInactive(rdb, roomID, addr) // Adjusted this line
+			if err != nil {
+				fmt.Printf("Failed to reassign host for room %s: %v\n", roomKey, err)
+			}
+		}
+	}
+
+	delete(clients, addr)
+
+	playerCountMutex.Lock()
+	currentPlayers--
+	playerCountMutex.Unlock()
+
+	return false
+}
+
 func checkHeartbeats(rdb *redis.Client) {
 	for {
 		time.Sleep(heartbeatInterval)
@@ -268,69 +352,22 @@ func checkHeartbeats(rdb *redis.Client) {
 
 		currentTime := time.Now()
 		for addr, clientInfo := range clients {
-			if currentTime.Sub(clientInfo.LastHeartbeat) > heartbeatInterval*time.Duration(missedHeartbeatsAllowed) {
-				fmt.Printf("Client %s missed heartbeats. Removing from list.\n", addr)
+			challengeQuestion := "What is 2 + 2?"
 
-				// Update room in Redis if required
-				roomKey := getRoomKeyForClient(rdb, addr)
-				if roomKey != "" {
-					err := decrementRoomPlayersCount(rdb, roomKey)
-					if err != nil {
-						fmt.Printf("Failed to decrement player count for room %s: %v\n", roomKey, err)
-					}
+			switch {
+			case !challengeClient(clientInfo, challengeQuestion):
+				msg := fmt.Sprintf("Client failed the challenge.\n")
+				res := removeClient(addr, rdb, msg)
+				if res {
 
-					// Retrieve all rpc_addresses
-					ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-					defer cancel()
-					rpcAddresses, err := rdb.SMembers(ctx, fmt.Sprintf("%s:rpc_addresses", roomKey)).Result()
-					if err != nil {
-						fmt.Printf("Failed to retrieve rpc_addresses from room %s: %v\n", roomKey, err)
-					}
-
-					// Find and remove the rpc_address that contains addr as a substring
-					var hostRemoved bool
-					for _, rpcAddr := range rpcAddresses {
-						if strings.Contains(rpcAddr, addr) {
-							err = rdb.SRem(ctx, fmt.Sprintf("%s:rpc_addresses", roomKey), rpcAddr).Err()
-							if err != nil {
-								fmt.Printf("Failed to remove rpc address %s from room %s: %v\n", rpcAddr, roomKey, err)
-							}
-							// Check if the removed client was the host
-							hostRpcAddress, _ := rdb.HGet(ctx, roomKey, "host_rpc_address").Result()
-							if strings.Split(hostRpcAddress, ";")[0] == addr {
-								hostRemoved = true
-							}
-							break // assuming there's only one matching rpcAddr
-						}
-					}
-
-					// Get room id
-					roomKey := getRoomKeyForClient(rdb, addr)
-					var roomID int
-					if roomKey != "" {
-						roomIDStr := strings.Split(roomKey, ":")[1]
-						roomID, err = strconv.Atoi(roomIDStr)
-						if err != nil {
-							// Handle error converting roomIDStr to int
-							fmt.Printf("Error converting roomIDStr to int: %v\n", err)
-							continue
-						}
-					}
-
-					// If host was removed, reassign a new host
-					if hostRemoved {
-						err = reassignHostIfInactive(rdb, roomID, addr) // Adjusted this line
-						if err != nil {
-							fmt.Printf("Failed to reassign host for room %s: %v\n", roomKey, err)
-						}
-					}
+					continue
 				}
-
-				delete(clients, addr)
-
-				playerCountMutex.Lock()
-				currentPlayers--
-				playerCountMutex.Unlock()
+			case currentTime.Sub(clientInfo.LastHeartbeat) > heartbeatInterval*time.Duration(missedHeartbeatsAllowed):
+				msg := fmt.Sprintf("Client %s missed heartbeats. Removing from list.\n", addr)
+				res := removeClient(addr, rdb, msg)
+				if res {
+					continue
+				}
 			}
 		}
 
@@ -349,7 +386,7 @@ func getRoomKeyForClient(rdb *redis.Client, clientAddr string) string {
 		// Retrieve all RPC addresses with user names from the set
 		rpcAddresses, err := rdb.SMembers(ctx, fmt.Sprintf("%s:rpc_addresses", roomKey)).Result()
 		if err != nil {
-			fmt.Printf("Error retrieving RPC addresses for %s:rpc_addresses: %v\n", roomKey, err)
+			fmt.Printf("\nError retrieving RPC addresses for %s:rpc_addresses: %v\n", roomKey, err)
 			continue // go to the next iteration
 		}
 
@@ -366,8 +403,7 @@ func getRoomKeyForClient(rdb *redis.Client, clientAddr string) string {
 		fmt.Printf("Error retrieving keys from Redis: %v\n", err)
 	}
 
-	// Not found
-	fmt.Printf("No room key found for client: %s\n", clientAddr)
+	fmt.Printf("\nNo room key found for client: %s\n", clientAddr)
 	return ""
 }
 
