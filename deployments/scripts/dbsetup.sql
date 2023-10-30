@@ -60,3 +60,10 @@ CREATE TABLE rooms (
     date_created TIMESTAMP NOT NULL DEFAULT current_timestamp
 );
 
+
+-- Create the user activity table
+CREATE TABLE user_activity (
+    id SERIAL PRIMARY KEY,
+    activity_entry_date TIMESTAMP NOT NULL
+);
+

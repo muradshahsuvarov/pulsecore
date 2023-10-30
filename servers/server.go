@@ -1,13 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"math/rand"
 	"net"
+	"net/http"
 	"os"
 	"pulsecore/proto/proto"
 	"strconv"
@@ -216,10 +219,32 @@ func trackClient(rpcAddr string) {
 		existingClient.RPCClient = proto.NewGameServiceClient(conn)
 		existingClient.LastHeartbeat = time.Now()
 	} else {
-
 		clients[rpcAddr] = &ClientInfo{
 			LastHeartbeat: time.Now(),
 			RPCClient:     proto.NewGameServiceClient(conn),
+		}
+
+		data := map[string]interface{}{
+			"activity_entry_date": time.Now().Format(time.RFC3339),
+		}
+
+		records := []map[string]interface{}{data}
+
+		inputData := map[string]interface{}{
+			"table_name": "user_activity",
+			"records":    records,
+		}
+
+		jsonData, err := json.Marshal(inputData)
+		if err != nil {
+			fmt.Printf("Failed to marshal json: %v\n", err)
+			return
+		}
+
+		_, err = http.Post("http://host.docker.internal:8091/database/records", "application/json", bytes.NewBuffer(jsonData))
+		if err != nil {
+			fmt.Printf("Failed to send POST request: %v\n", err)
+			return
 		}
 
 		playerCountMutex.Lock()

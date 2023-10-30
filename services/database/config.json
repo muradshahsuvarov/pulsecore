@@ -16,6 +16,10 @@
 		"users": {
             "allowed": true,
             "nonUpdatableColumns": ["id", "email", "date_created"]
+        },
+        "user_activity": {
+            "allowed": true,
+            "nonUpdatableColumns": ["id", "activity_entry_date"]
         }
     }
 }
