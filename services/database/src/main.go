@@ -95,7 +95,7 @@ func fetchRecords(c *gin.Context) {
 	if len(whereClauses) > 0 {
 		whereClause = fmt.Sprintf("WHERE %s", strings.Join(whereClauses, " AND "))
 	}
-    
+
 	query := fmt.Sprintf("SELECT %s FROM %s %s", selectColumns, requestData.TableName, whereClause)
 
 	rows, err := db.Query(context.Background(), query, values...)
@@ -140,18 +140,21 @@ func createRecords(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&inputData); err != nil {
+		log.Printf("Failed to bind JSON: %v", err) // Add this log
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	_, ok := allowedTablesMap[inputData.TableName]
 	if !ok {
+		log.Printf("Invalid table name: %s", inputData.TableName) // Add this log
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid table name provided"})
 		return
 	}
 
 	for _, record := range inputData.Records {
 		if err := dbutils.InsertRecord(db, inputData.TableName, record); err != nil {
+			log.Printf("Error while inserting record: %v", err) // Add this log
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to insert record: %v", err)})
 			return
 		}
