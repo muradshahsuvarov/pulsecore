@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -73,6 +74,12 @@ func main() {
 	// Transfer host from the current host to a new one
 	r.POST("/matchmaking/transfer-host", transferHost)
 
+	// Join an available room
+	r.POST("/matchmaking/join-available-room", joinAvailableRoom)
+
+	// Leave current room
+	r.POST("/matchmaking/leave-current-room", leaveCurrentRoom)
+
 	r.Run(":8096")
 }
 
@@ -100,7 +107,7 @@ func createRoom(c *gin.Context) {
 	var requestData struct {
 		RoomName      string `json:"roomName"`
 		ServerAddress string `json:"serverAddress"`
-		RpcAddress    string `json:"rpcAddrerss"`
+		RpcAddress    string `json:"rpcAddress"`
 		ClientName    string `json:"clientName"`
 	}
 
@@ -171,7 +178,7 @@ func joinRoom(c *gin.Context) {
 	var requestData struct {
 		RoomID     int    `json:"roomID"`
 		ClientID   int    `json:"clientID"`
-		RpcAddress string `json:"rpcAddrerss"`
+		RpcAddress string `json:"rpcAddress"`
 		ClientName string `json:"clientName"`
 	}
 
@@ -276,7 +283,7 @@ func leaveRoom(c *gin.Context) {
 	// Update current player count in the sorted set
 	rdb.ZIncrBy(context.Background(), "rooms", -1, fmt.Sprintf("room:%d", roomID))
 
-	c.JSON(http.StatusCreated, gin.H{"message": "Joined room successfully!", "roomId": roomID})
+	c.JSON(http.StatusCreated, gin.H{"message": "Left room successfully!", "roomId": roomID})
 
 }
 
@@ -403,4 +410,110 @@ func transferHost(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Host transfer was successful", "oldhost": currentHostRpcAddress, "newhost": newHostRpcAddress, "roomid": roomID, "roomkey": roomKey})
 
+}
+
+func joinAvailableRoom(c *gin.Context) {
+
+	var requestData struct {
+		ClientName string `json:"clientName"`
+		ClientID   int    `json:"clientID"`
+		RpcAddress string `json:"rpcAddress"`
+	}
+
+	if err := c.ShouldBindJSON(&requestData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Couldn't bind the object. Error: %s", err.Error())})
+	}
+
+	// Get the room with the lowest current player count from the sorted set
+	// Runtime complexity is O(log(N))
+	roomKey := rdb.ZRangeWithScores(context.Background(), "rooms", 0, 0).Val()
+
+	// Extract roomID and current player count
+	roomIDStr := strings.Split(roomKey[0].Member.(string), ":")[1]
+	roomID, err := strconv.Atoi(roomIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Errorf("Error parsing room ID: %v", err)})
+		return
+	}
+	currentPlayers := int(roomKey[0].Score)
+
+	// Retrieve max players as a string from Redis
+	maxPlayersStr := rdb.HGet(context.Background(), fmt.Sprintf("room:%d", roomID), "max_players").Val()
+
+	// Convert the maxPlayers string to an integer
+	maxPlayers, err := strconv.Atoi(maxPlayersStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Errorf("Error converting max players string to int: %v", err)})
+		return
+	}
+
+	// Check if room is available
+	if currentPlayers >= maxPlayers {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Errorf("No available rooms")})
+		return
+	}
+
+	c.Set("roomId", roomID)
+
+	// Now, attempt to join this room
+	joinRoom(c)
+	if len(c.Errors) != 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Errorf("Error joining room: %v", err)})
+		return
+	}
+
+	// Update current player count in the sorted set
+	rdb.ZIncrBy(context.Background(), "rooms", 1, fmt.Sprintf("room:%d", roomID))
+
+	c.JSON(http.StatusOK, gin.H{"message": "Successfully joined a room", "roomId": roomID})
+}
+
+func leaveCurrentRoom(c *gin.Context) {
+
+	var requestData struct {
+		CurrentRoomId int    `json:"currentRoomId"`
+		ClientID      int    `json:"clientID"`
+		ClientName    string `json:"clientName"`
+		RpcAddress    string `json:"rpcAddress"`
+	}
+
+	if err := c.ShouldBindJSON(&requestData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Couldn't bind the object. Error: %s", err.Error())})
+	}
+
+	var CurrentRoomID int = requestData.CurrentRoomId
+	var clientID int = requestData.ClientID
+	var clientName string = requestData.ClientName
+	var rpcAddress string = requestData.RpcAddress
+
+	if CurrentRoomID == -1 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Client is not in any room")})
+		return
+	}
+
+	roomKey := fmt.Sprintf("room:%d", CurrentRoomID)
+	exists := rdb.Exists(context.Background(), roomKey).Val()
+
+	if exists == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Errorf("Room does not exist")})
+		return
+	}
+
+	// Remove clientID from the room's set of clients
+	err := rdb.SRem(context.Background(), roomKey+":clients", clientID).Err()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Errorf("Error removing client from room: %v", err)})
+		return
+	}
+
+	// Decrement the player count
+	_, err = rdb.HIncrBy(context.Background(), roomKey, "current_players", -1).Result()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Errorf("Error decrementing player count: %v", err)})
+		return
+	}
+
+	rdb.SRem(context.Background(), fmt.Sprintf("room:%d:rpc_addresses", CurrentRoomID), rpcAddress+";"+clientName)
+
+	c.JSON(http.StatusOK, gin.H{"message": "Client left the room successfully", "roomID": CurrentRoomID})
 }
