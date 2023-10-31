@@ -19,7 +19,6 @@ import (
 
 	"pulsecore/proto/proto"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
 )
@@ -46,8 +45,6 @@ var MyRPCAddress string
 
 func main() {
 
-	var redisAddr string
-
 	u := uuid.New()
 	shortUUID := u.String()[:8]
 	defaultName := fmt.Sprintf("Player_%s", shortUUID)
@@ -61,10 +58,6 @@ func main() {
 	// of the service.
 	flag.StringVar(&serverAddr, "server", "pulsecore_server_0:12345", "Specify server address you want to connect with")
 	flag.StringVar(&applicationId, "app", "", "Specify your registered applicaiton")
-
-	// For redis-server you would use 127.0.0.1:6379 if it's running on Docker locally
-	// If it's deployed in a remote cloud system, then get it's appropriate external id and the port
-	flag.StringVar(&redisAddr, "redis-server", "", "Specify your redis address.\nOn local machine it is usually localhost:6379")
 	flag.StringVar(&ClientName, "name", defaultName, "A name for the client")
 	flag.Parse()
 
@@ -82,11 +75,6 @@ func main() {
 	serverExists := checkServerAssociated(applicationId, serverAddr)
 	if !serverExists {
 		log.Fatal("There's no such server registered with this application id")
-	}
-
-	if redisAddr == "" {
-		log.Fatal("Redis server address required for room management within the server!\n",
-			"On local machines it is usually localhost:6379")
 	}
 
 	fmt.Println(strings.Repeat("=", 50))
@@ -167,32 +155,11 @@ func main() {
 		}
 	}()
 
-	var rdb *redis.Client = &redis.Client{}
-	defer rdb.Close()
-
-	// Redis setup
-	rdb = redis.NewClient(&redis.Options{
-		Addr:     redisAddr, // E.g. redis01:6379
-		Password: "",
-		DB:       0,
-	})
-
-	if rdb.Get(context.Background(), "room_id").Err() == redis.Nil {
-		rdb.Set(context.Background(), "room_id", 0, 0)
-	}
-
-	_, err = rdb.Ping(context.Background()).Result()
-	if err != nil {
-		log.Fatalf("Unable to connect to Redis: %v", err)
-	}
-	fmt.Println("Connected to redis...")
-	fmt.Println(strings.Repeat("=", 50))
-
 	// Send messages in an infinite loop until the user types "exit"
 	reader := bufio.NewReader(os.Stdin)
 
 	MyRPCAddress = rpcAddress + ";" + ClientName
-	choiceHandler(reader, client, rdb, dynamicPort, rpcAddress)
+	choiceHandler(reader, client, dynamicPort, rpcAddress)
 
 }
 
@@ -274,7 +241,7 @@ func sendPostRequest(url string, data interface{}) ([]byte, error) {
 	return body, nil
 }
 
-func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, rdb *redis.Client, dynamicPort int, rpcAddress string) {
+func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, dynamicPort int, rpcAddress string) {
 	for {
 		printSeparator := func() {
 			fmt.Println(strings.Repeat("=", 50))
@@ -354,7 +321,7 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, rdb *re
 				continue
 			}
 
-			roomID, err := joinAvailableRoom(rdb, dynamicPort, rpcAddress)
+			roomID, err := joinAvailableRoom(dynamicPort, rpcAddress)
 			if err != nil {
 				log.Printf("Error auto-joining room: %v", err)
 			} else {
@@ -362,7 +329,7 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, rdb *re
 			}
 		case "5":
 			printSeparator()
-			err := leaveCurrentRoom(rdb, dynamicPort, rpcAddress)
+			err := leaveCurrentRoom(dynamicPort, rpcAddress)
 			if err != nil {
 				log.Printf("Error leaving room: %v", err)
 			} else {
@@ -623,44 +590,61 @@ func transferHost(roomID int, currentRpcAddress string, newHostRpcAddress string
 	return nil
 }
 
-func joinAvailableRoom(rdb *redis.Client, dynamicPort int, rpcAddress string) (int, error) {
-	// Get the room with the lowest current player count from the sorted set
-	// Runtime complexity is O(log(N))
-	roomKey := rdb.ZRangeWithScores(context.Background(), "rooms", 0, 0).Val()
+func joinAvailableRoom(dynamicPort int, rpcAddress string) (int, error) {
 
-	// Extract roomID and current player count
-	roomIDStr := strings.Split(roomKey[0].Member.(string), ":")[1]
-	roomID, err := strconv.Atoi(roomIDStr)
+	req_url := fmt.Sprintf("http://host.docker.internal:8096/")
+
+	payload := struct {
+		ClientName string `json:"clientName"`
+		ClientID   int    `json:"clientID"`
+		RpcAddress string `json:"rpcAddress"`
+	}{
+		ClientName: ClientName,
+		ClientID:   dynamicPort,
+		RpcAddress: MyRPCAddress,
+	}
+
+	data, err := json.Marshal(payload)
+
 	if err != nil {
-		return -1, fmt.Errorf("Error parsing room ID: %v", err)
+		return -1, fmt.Errorf("Error happened during marshelling the payload. Error message: %s", err.Error())
 	}
-	currentPlayers := int(roomKey[0].Score)
 
-	// Retrieve max players as a string from Redis
-	maxPlayersStr := rdb.HGet(context.Background(), fmt.Sprintf("room:%d", roomID), "max_players").Val()
+	res, err := http.Post(req_url, "application/json", bytes.NewBuffer(data))
 
-	// Convert the maxPlayers string to an integer
-	maxPlayers, err := strconv.Atoi(maxPlayersStr)
 	if err != nil {
-		return -1, fmt.Errorf("Error converting max players string to int: %v", err)
+		return -1, fmt.Errorf("Error during the request processing. Error: %s", err.Error())
 	}
 
-	// Check if room is available
-	if currentPlayers >= maxPlayers {
-		return -1, fmt.Errorf("No available rooms")
-	}
+	defer res.Body.Close()
 
-	// Now, attempt to join this room
-	err = joinRoom(roomID, dynamicPort, rpcAddress)
 	if err != nil {
-		return -1, fmt.Errorf("Error joining room: %v", err)
+		return -1, fmt.Errorf("Error happened during requestion processing. Error message: %s", err.Error())
 	}
 
-	// Update current player count in the sorted set
-	rdb.ZIncrBy(context.Background(), "rooms", 1, fmt.Sprintf("room:%d", roomID))
+	var roomId int
 
-	CurrentRoomID = roomID
-	return roomID, nil
+	if res.StatusCode == http.StatusOK {
+		res_body := struct {
+			Message string `json:"message"`
+			RoomId  int    `json:"roomId"`
+		}{}
+
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			return -1, fmt.Errorf("Error happened during the response body reading. Error message: %s", err.Error())
+		}
+
+		err = json.Unmarshal(body, &res_body)
+
+		if err != nil {
+			return -1, fmt.Errorf("Error happened during unmarshelling the response body. Error message: %s", err.Error())
+		}
+
+		roomId = res_body.RoomId
+	}
+
+	return roomId, nil
 }
 
 func joinRoom(roomID int, clientID int, rpcAddress string) error {
@@ -760,35 +744,55 @@ func leaveRoom(roomID int) error {
 
 }
 
-func leaveCurrentRoom(rdb *redis.Client, clientID int, rpcAddress string) error {
-	if CurrentRoomID == -1 {
-		return fmt.Errorf("Client is not in any room")
+func leaveCurrentRoom(clientID int, rpcAddress string) error {
+
+	req_url := fmt.Sprintf("http://host.docker.internal:8095/matchmaking/leave-room")
+
+	payload := struct {
+		CurrentRoomId int    `json:"currentRoomId"`
+		ClientID      int    `json:"clientID"`
+		ClientName    string `json:"clientName"`
+		RpcAddress    string `json:"rpcAddress"`
+	}{
+		CurrentRoomId: CurrentRoomID,
+		ClientID:      clientID,
+		ClientName:    ClientName,
+		RpcAddress:    rpcAddress,
 	}
 
-	roomKey := fmt.Sprintf("room:%d", CurrentRoomID)
-	exists := rdb.Exists(context.Background(), roomKey).Val()
+	data, err := json.Marshal(payload)
 
-	if exists == 0 {
-		CurrentRoomID = -1 // Ensure to reset the room ID to -1
-		return fmt.Errorf("Room does not exist")
-	}
-
-	// Remove clientID from the room's set of clients
-	err := rdb.SRem(context.Background(), roomKey+":clients", clientID).Err()
 	if err != nil {
-		return fmt.Errorf("Error removing client from room: %v", err)
+		return fmt.Errorf("Error happened during marshelling the payload. Error message: %s", err.Error())
 	}
 
-	// Decrement the player count
-	_, err = rdb.HIncrBy(context.Background(), roomKey, "current_players", -1).Result()
+	res, err := http.Post(req_url, "application/json", bytes.NewBuffer(data))
 	if err != nil {
-		return fmt.Errorf("Error decrementing player count: %v", err)
+		CurrentRoomID = -1
+		return fmt.Errorf("Error happened during room creating request. Error Message: %s", err.Error())
+
 	}
 
-	rdb.SRem(context.Background(), fmt.Sprintf("room:%d:rpc_addresses", CurrentRoomID), rpcAddress+";"+ClientName)
+	defer res.Body.Close()
 
-	// Reset CurrentRoomID
-	CurrentRoomID = -1
+	if res.StatusCode == http.StatusOK {
+		res_body := struct {
+			Message string `json:"message"`
+			RoomId  int    `json:"roomID"`
+		}{}
+
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			return fmt.Errorf("Error happened during the response body reading. Error message: %s", err.Error())
+		}
+
+		err = json.Unmarshal(body, &res_body)
+
+		if err != nil {
+			return fmt.Errorf("Error happened during unmarshelling the response body. Error message: %s", err.Error())
+		}
+	}
+
 	return nil
 }
 
