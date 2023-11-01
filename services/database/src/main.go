@@ -97,8 +97,14 @@ func fetchRecords(c *gin.Context) {
 	}
 
 	query := fmt.Sprintf("SELECT %s FROM %s %s", selectColumns, requestData.TableName, whereClause)
+	conn, err := db.Acquire(context.Background())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Unable to acquire a database connection"})
+		return
+	}
+	defer conn.Release()
 
-	rows, err := db.Query(context.Background(), query, values...)
+	rows, err := conn.Query(context.Background(), query, values...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -140,21 +146,21 @@ func createRecords(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&inputData); err != nil {
-		log.Printf("Failed to bind JSON: %v", err) // Add this log
+		log.Printf("Failed to bind JSON: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	_, ok := allowedTablesMap[inputData.TableName]
 	if !ok {
-		log.Printf("Invalid table name: %s", inputData.TableName) // Add this log
+		log.Printf("Invalid table name: %s", inputData.TableName)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid table name provided"})
 		return
 	}
 
 	for _, record := range inputData.Records {
 		if err := dbutils.InsertRecord(db, inputData.TableName, record); err != nil {
-			log.Printf("Error while inserting record: %v", err) // Add this log
+			log.Printf("Error while inserting record: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to insert record: %v", err)})
 			return
 		}
@@ -208,7 +214,14 @@ func updateRecords(c *gin.Context) {
 
 		updateQuery := fmt.Sprintf("UPDATE %s SET %s WHERE id IN (%s)", tableName, strings.Join(setClauses, ", "), strings.Join(placeholders, ", "))
 
-		_, err := db.Exec(context.Background(), updateQuery, values...)
+		conn, err := db.Acquire(context.Background())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+			return
+		}
+		defer conn.Release()
+
+		_, err = conn.Exec(context.Background(), updateQuery, values...)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -252,7 +265,13 @@ func deleteRecords(c *gin.Context) {
 
 	deleteQuery := fmt.Sprintf("DELETE FROM %s %s", tableName, whereClause)
 
-	commandTag, err := db.Exec(context.Background(), deleteQuery, values...)
+	conn, err := db.Acquire(context.Background())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+	}
+	defer conn.Release()
+
+	commandTag, err := conn.Exec(context.Background(), deleteQuery, values...)
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

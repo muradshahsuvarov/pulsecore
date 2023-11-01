@@ -44,7 +44,13 @@ func InsertRecord(db *pgxpool.Pool, tableName string, record map[string]interfac
 	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
 		tableName, strings.Join(columns, ", "), PlaceHolders(len(columns)))
 
-	_, err := db.Exec(context.Background(), query, values...)
+	conn, err := db.Acquire(context.Background())
+	if err != nil {
+		return err
+	}
+	defer conn.Release()
+
+	_, err = conn.Exec(context.Background(), query, values...)
 	if err != nil {
 		return err
 	}
