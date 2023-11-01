@@ -73,8 +73,8 @@ func main() {
 		DB:       0,
 	})
 
-	s := grpc.NewServer()
-	proto.RegisterGameServiceServer(s, &gameServer{
+	server := grpc.NewServer()
+	proto.RegisterGameServiceServer(server, &gameServer{
 		rdb: rdb,
 	})
 
@@ -88,7 +88,7 @@ func main() {
 	// Start the room monitor in a goroutine
 	go monitorRoomsStatus(rdb)
 
-	if err := s.Serve(listener); err != nil {
+	if err := server.Serve(listener); err != nil {
 		fmt.Println("Failed to serve:", err)
 	}
 }
