@@ -46,13 +46,9 @@ var MyRPCAddress string
 
 func main() {
 
-}
-
-func StartClient() {
-
 	u := uuid.New()
 	shortUUID := u.String()[:8]
-	defaultName := fmt.Sprintf("Player_%s", shortUUID)
+	defaultClientName := fmt.Sprintf("Player_%s", shortUUID)
 
 	// Parsing provided terminal arguments
 	// Specify a proper address of the server
@@ -63,8 +59,14 @@ func StartClient() {
 	// of the service.
 	flag.StringVar(&serverAddr, "server", "pulsecore_server_0:12345", "Specify server address you want to connect with")
 	flag.StringVar(&applicationId, "app", "", "Specify your registered applicaiton")
-	flag.StringVar(&ClientName, "name", defaultName, "A name for the client")
+	flag.StringVar(&ClientName, "name", defaultClientName, "A name for the client")
 	flag.Parse()
+
+	// Starting the client
+	StartClient(serverAddr, applicationId, ClientName)
+}
+
+func StartClient(serverAddr string, applicationId string, ClientName string) {
 
 	if applicationId == "" {
 		log.Fatal("Application id can not be empty")
@@ -503,7 +505,7 @@ func (c *Client) SolveChallenge(ctx context.Context, req *proto.ChallengeRequest
 
 func createRoom(roomName string, rpcAddress string) (int, error) {
 
-	req_url := fmt.Sprintf("http://host.docker.internal:8095/matchmaking/create-room")
+	req_url := fmt.Sprintf("http://localhost:12354/matchmaking/create-room")
 	roomNameFormat := fmt.Sprintf("room_name:%s", roomName)
 
 	payload := struct {
@@ -560,7 +562,7 @@ func createRoom(roomName string, rpcAddress string) (int, error) {
 // Transfer the host role to another member
 func transferHost(roomID int, currentRpcAddress string, newHostRpcAddress string) error {
 
-	req_url := fmt.Sprintf("http://host.docker.internal:8095/matchmaking/transfer-host")
+	req_url := fmt.Sprintf("http://localhost:12354/matchmaking/transfer-host")
 
 	payload := struct {
 		RoomID            int    `json:"roomID"`
@@ -681,7 +683,7 @@ func joinAvailableRoom(dynamicPort int, rpcAddress string) (int, error) {
 
 func joinRoom(roomID int, clientID int, rpcAddress string) error {
 
-	req_url := fmt.Sprintf("http://host.docker.internal:8095/matchmaking/join-room")
+	req_url := fmt.Sprintf("http://localhost:12354/matchmaking/join-room")
 
 	payload := struct {
 		RoomID     int    `json:"roomID"`
@@ -732,7 +734,7 @@ func joinRoom(roomID int, clientID int, rpcAddress string) error {
 
 func leaveRoom(roomID int) error {
 
-	req_url := fmt.Sprintf("http://host.docker.internal:8095/matchmaking/leave-room")
+	req_url := fmt.Sprintf("http://localhost:12354/matchmaking/leave-room")
 
 	payload := struct {
 		RoomID int `json:"roomID"`
@@ -778,7 +780,7 @@ func leaveRoom(roomID int) error {
 
 func leaveCurrentRoom(clientID int, rpcAddress string) error {
 
-	req_url := fmt.Sprintf("http://host.docker.internal:8095/matchmaking/leave-room")
+	req_url := fmt.Sprintf("http://localhost:12354/matchmaking/leave-current-room")
 
 	payload := struct {
 		CurrentRoomId int    `json:"currentRoomId"`
@@ -830,7 +832,7 @@ func leaveCurrentRoom(clientID int, rpcAddress string) error {
 
 func listRooms() ([]map[string]string, error) {
 
-	req_url := fmt.Sprintf("http://host.docker.internal:8095/matchmaking/listrooms")
+	req_url := fmt.Sprintf("http://localhost:12354/matchmaking/listrooms")
 
 	res, err := http.Get(req_url)
 	if err != nil {
@@ -866,7 +868,7 @@ func listRooms() ([]map[string]string, error) {
 
 func printRoomData(roomID int) error {
 
-	req_url := fmt.Sprintf("/matchmaking/roomdetails/%d", roomID)
+	req_url := fmt.Sprintf("http://localhost:12354/matchmaking/roomdetails/%d", roomID)
 
 	res, err := http.Get(req_url)
 	if err != nil {

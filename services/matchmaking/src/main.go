@@ -316,19 +316,11 @@ func listRooms(c *gin.Context) {
 
 func roomDetails(c *gin.Context) {
 
-	var requestData struct {
-		RoomID     int    `json:"roomID"`
-		ClientID   int    `json:"clientID"`
-		RpcAddress string `json:"rpcAddrerss"`
-		ClientName string `json:"clientName"`
+	roomID, err := strconv.Atoi(c.Param("roomId"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
-
-	if err := c.ShouldBindJSON(&requestData); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
-		return // Added return statement to terminate the function on error
-	}
-
-	var roomID int = requestData.RoomID
 
 	roomKey := fmt.Sprintf("room:%d", roomID)
 	roomData, err := rdb.HGetAll(context.Background(), roomKey).Result()

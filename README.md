@@ -98,7 +98,7 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
     ```
 2. Run the following command to run a container:
     ```
-    docker run -d -e SERVER_ADDR=":8096" -e REDIS_ADDR="redis01:6379" --network pulsecore_network -p 12354:12354 --name pulsecore_mm_server_0  matchmaking_server:latest
+    docker run -d -e SERVER_ADDR=":8096" -e REDIS_ADDR="redis01:6379" --network pulsecore_network -p 12354:8096 --name pulsecore_mm_server_0  matchmaking_server:latest
     ```
 
 ### Client Setup
@@ -122,7 +122,7 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
     docker run -it --name pulsecore_client_Murad --network pulsecore_network -p 8001-9000 pulsecore_client --server=pulsecore_server_0:12345 --redis-server=redis01:6379 --name=Murad
     ```
 	
-4. To run client locally use:
+4. To run client locally (Local Matchmaking) use:
 
 	```
     go run main.go --app <REGISTERED_APPLICATION_ID> --server <REGISTERED_SERVER_ADDRESS> --redis-server 127.0.0.1:6379
@@ -132,6 +132,15 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
 	go run main.go --app b5864d14-08e6-4e3e-82a5-33b91d2bb985 --server 127.0.0.1:12345 --redis-server 127.0.0.1:6379
 	```
 
+5. To run client locally (Remote Matchmaking) use:
+
+	```
+    go run main.go --app <REGISTERED_APPLICATION_ID> --server <REGISTERED_SERVER_ADDRESS>
+    ```
+
+    ```
+	go run main.go --app b5864d14-08e6-4e3e-82a5-33b91d2bb985 --server 127.0.0.1:12345
+	```
 
 ### Generation of Golang client and server based on proto
    1. Navigate to the client directory:
