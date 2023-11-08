@@ -90,6 +90,17 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
     ```
     Note: `0.0.0.0` allows the service to accept connections from any IP address on any network interface of the machine.
 
+### Matchmaking Server Setup
+
+1. Run the following command to build an image for the matchmaking:
+    ```
+    docker build -t matchmaking_server -f ./services/matchmaking/Dockerfile .
+    ```
+2. Run the following command to run a container:
+    ```
+    docker run -d -e SERVER_ADDR=":8096" -e REDIS_ADDR="redis01:6379" --network pulsecore_network -p 12354:12354 --name pulsecore_mm_server_0  matchmaking_server:latest
+    ```
+
 ### Client Setup
 
 1. Navigate to the client directory:

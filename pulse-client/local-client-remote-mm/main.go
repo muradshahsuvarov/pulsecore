@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -44,6 +45,10 @@ var applicationId string
 var MyRPCAddress string
 
 func main() {
+
+}
+
+func StartClient() {
 
 	u := uuid.New()
 	shortUUID := u.String()[:8]
@@ -160,7 +165,6 @@ func main() {
 
 	MyRPCAddress = rpcAddress + ";" + ClientName
 	choiceHandler(reader, client, dynamicPort, rpcAddress)
-
 }
 
 func solveChallenge(challengeQuestion string) bool {
@@ -258,7 +262,8 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, dynamic
 		fmt.Println("9: Room-specific message")
 		fmt.Println("10: Change the host")
 		fmt.Println("11: My RPC Address")
-		fmt.Println("12: Exit")
+		fmt.Println("12: Start the game")
+		fmt.Println("13: Exit")
 		printSeparator()
 		fmt.Print("Enter your choice: ")
 
@@ -406,6 +411,33 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, dynamic
 			fmt.Println(MyRPCAddress)
 
 		case "12":
+			printSeparator()
+			fmt.Println("Do you want to start the game?\n1 - Yes")
+			option, _ := reader.ReadString('\n')
+			option = strings.TrimSpace(option)
+			switch option {
+			case "1":
+				fmt.Println("Enter the size of a flask in (width,height) format:")
+				flask_size, _ := reader.ReadString('\n')
+				flask_size = strings.TrimSpace(flask_size)
+				pattern := `\((\d+),(\d+)\)`
+				re := regexp.MustCompile(pattern)
+				matches := re.FindAllStringSubmatch(flask_size, -1)
+				if len(matches) != 1 {
+					fmt.Println("Incorrect size format")
+					continue
+				}
+				for _, match := range matches {
+					fmt.Printf("Width: %s, Height: %s\n", match[1], match[2])
+				}
+
+			case "0":
+				continue
+			default:
+				fmt.Println("There is no such as option")
+			}
+
+		case "13":
 			printSeparator()
 			fmt.Println("Exiting...")
 			return
