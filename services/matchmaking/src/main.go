@@ -22,8 +22,10 @@ func main() {
 	defer rdb.Close()
 
 	var redisAddr string
+	var serverAddr string
 
 	flag.StringVar(&redisAddr, "redis-server", "", "Specify your redis address.\nOn local machine it is usually localhost:6379")
+	flag.StringVar(&serverAddr, "server", ":8096", "Specify your server address.\nOn local machine it is usually :8096")
 	flag.Parse()
 
 	if redisAddr == "" {
@@ -80,13 +82,13 @@ func main() {
 	// Leave current room
 	r.POST("/matchmaking/leave-current-room", leaveCurrentRoom)
 
-	r.Run(":8096")
+	// Start the game
+	r.POST("/matchmaking/start-the-game", startTheGame)
+
+	r.Run(serverAddr)
 }
 
 func checkHealth(c *gin.Context) {
-	// TODO: Add checks for database connections, third-party services, etc. here
-
-	// If everything is okay
 	c.JSON(200, gin.H{
 		"status":  "Healthy",
 		"message": "Matchmaking service is running.",
@@ -516,4 +518,39 @@ func leaveCurrentRoom(c *gin.Context) {
 	rdb.SRem(context.Background(), fmt.Sprintf("room:%d:rpc_addresses", CurrentRoomID), rpcAddress+";"+clientName)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Client left the room successfully", "roomID": CurrentRoomID})
+}
+
+func startTheGame(c *gin.Context) {
+
+	var requestData struct {
+		RoomID            int    `json:"roomID"`
+		CurrentRPCAddress string `json:"currentRpcAddress"`
+		NewHostRPCAddress string `json:"newHostRpcAddress"`
+	}
+
+	if err := c.ShouldBindJSON(&requestData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+		return // Added return statement to terminate the function on error
+	}
+
+	var roomID int = requestData.RoomID
+	var currentRpcAddress = requestData.CurrentRPCAddress
+
+	roomKey := fmt.Sprintf("room:%d", roomID)
+
+	// Get the current host rpc address
+	currentHostRpcAddress, err := rdb.HGet(context.Background(), roomKey, "host_rpc_address").Result()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, fmt.Errorf("Error fetching current host: %v", err))
+		return
+	}
+
+	// Verify if the current user (based on rpcAddress) is the host
+	if currentHostRpcAddress != currentRpcAddress {
+		c.JSON(http.StatusBadRequest, fmt.Errorf("You are not the host of this room"))
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Game Successfully started"})
+
 }
