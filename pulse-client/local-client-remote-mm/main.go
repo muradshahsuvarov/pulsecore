@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	flaskgame "pulsecore/flask-game"
 	"pulsecore/proto/proto"
 
 	"github.com/google/uuid"
@@ -340,6 +341,7 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, dynamic
 			if err != nil {
 				log.Printf("Error leaving room: %v", err)
 			} else {
+				CurrentRoomID = -1
 				fmt.Println("Left room successfully!")
 			}
 		case "6":
@@ -414,15 +416,18 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, dynamic
 
 		case "12":
 			printSeparator()
-			fmt.Println("Do you want to start the game?\n1 - Yes")
+			fmt.Println("Do you want to start the game?\n1 - Yes\n0 - No")
+			printSeparator()
 			option, _ := reader.ReadString('\n')
 			option = strings.TrimSpace(option)
+
 			switch option {
 			case "1":
 				fmt.Println("Enter the size of a flask in (width,height) format:")
+				printSeparator()
 				flask_size, _ := reader.ReadString('\n')
 				flask_size = strings.TrimSpace(flask_size)
-				pattern := `\((\d+),(\d+)\)`
+				pattern := `(\d+),(\d+)`
 				re := regexp.MustCompile(pattern)
 				matches := re.FindAllStringSubmatch(flask_size, -1)
 				if len(matches) != 1 {
@@ -430,8 +435,42 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, dynamic
 					continue
 				}
 				for _, match := range matches {
-					fmt.Printf("Width: %s, Height: %s\n", match[1], match[2])
+					flask_width, err := strconv.Atoi(match[1])
+					if err != nil {
+						fmt.Println("Could not convert flask width to int, Error: ", err.Error())
+						continue
+					}
+					flask_height, err := strconv.Atoi(match[1])
+					if err != nil {
+						fmt.Println("Could not convert flask width to int, Error: ", err.Error())
+						continue
+					}
+					flask_size = fmt.Sprintf("%d,%d", flask_width, flask_height)
 				}
+
+				fmt.Printf("The flask size is [%s]\n", flask_size)
+				fmt.Printf("Game is starting...\n")
+				time_lap := time.Second * 1
+
+				for time_counter := 5; time_counter > 0; time_counter-- {
+					fmt.Println("Seconds left: ", time_counter)
+					time.Sleep(time_lap)
+				}
+
+				fmt.Println("Game started")
+
+				flask_split := strings.Split(flask_size, ",")
+
+				width, err := strconv.Atoi(flask_split[0])
+				if err != nil {
+					fmt.Println("Could not convert flask width to int, error: ", err.Error())
+				}
+				height, err := strconv.Atoi(flask_split[1])
+				if err != nil {
+					fmt.Println("Could not convert flask height to int, error: ", err.Error())
+				}
+
+				flaskgame.StartGame(width, height)
 
 			case "0":
 				continue

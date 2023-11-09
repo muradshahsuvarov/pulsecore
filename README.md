@@ -114,6 +114,9 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
     ```
 
 3. Run the client (repeat for multiple clients):
+
+    - Navigate to client folder
+
     ```bash
     docker run -it --name pulsecore_client_Murad --network <shared-network> -p <desired-port>:<server-port> pulsecore_client --server=<container-name>:<container-port> --redis-server=<redis-container>:<redis-port> --name=Murad
     ```
@@ -124,6 +127,8 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
 	
 4. To run client locally (Local Matchmaking) use:
 
+    - Navigate to local-client folder
+
 	```
     go run main.go --app <REGISTERED_APPLICATION_ID> --server <REGISTERED_SERVER_ADDRESS> --redis-server 127.0.0.1:6379
     ```
@@ -133,6 +138,8 @@ PulseCore is an innovative, open-source game server built to revolutionize the w
 	```
 
 5. To run client locally (Remote Matchmaking) use:
+
+    - Navigate to local-client-remote-mm folder
 
 	```
     go run main.go --app <REGISTERED_APPLICATION_ID> --server <REGISTERED_SERVER_ADDRESS>
