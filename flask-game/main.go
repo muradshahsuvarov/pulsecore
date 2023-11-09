@@ -1,7 +1,6 @@
-package main
+package flaskgame
 
 import (
-	"flag"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -15,14 +14,7 @@ const (
 	empty     = " "
 )
 
-func main() {
-	// Define the flask dimensions
-	height := 10
-	width := 10
-
-	flag.IntVar(&height, "height", 10, "Height of a flask")
-	flag.IntVar(&width, "width", 10, "Width of a flask")
-	flag.Parse()
+func StartGame(width int, height int) {
 
 	// Initialize the flask with air
 	flask := make([][]string, height)
