@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.3.0
 // - protoc             v4.24.4
-// source: message.proto
+// source: proto/message.proto
 
 package proto
 
@@ -26,6 +26,7 @@ const (
 	GameService_ReceiveMessageFromServer_FullMethodName = "/GameService/ReceiveMessageFromServer"
 	GameService_SendMessageToRoom_FullMethodName        = "/GameService/SendMessageToRoom"
 	GameService_SolveChallenge_FullMethodName           = "/GameService/SolveChallenge"
+	GameService_Evaluate_FullMethodName                 = "/GameService/Evaluate"
 )
 
 // GameServiceClient is the client API for GameService service.
@@ -39,6 +40,7 @@ type GameServiceClient interface {
 	ReceiveMessageFromServer(ctx context.Context, in *MessageFromServerRequest, opts ...grpc.CallOption) (*MessageFromServerResponse, error)
 	SendMessageToRoom(ctx context.Context, in *MessageToRoomRequest, opts ...grpc.CallOption) (*MessageResponse, error)
 	SolveChallenge(ctx context.Context, in *ChallengeRequest, opts ...grpc.CallOption) (*ChallengeResponse, error)
+	Evaluate(ctx context.Context, in *EvaluateRequest, opts ...grpc.CallOption) (*EvaluateResponse, error)
 }
 
 type gameServiceClient struct {
@@ -112,6 +114,15 @@ func (c *gameServiceClient) SolveChallenge(ctx context.Context, in *ChallengeReq
 	return out, nil
 }
 
+func (c *gameServiceClient) Evaluate(ctx context.Context, in *EvaluateRequest, opts ...grpc.CallOption) (*EvaluateResponse, error) {
+	out := new(EvaluateResponse)
+	err := c.cc.Invoke(ctx, GameService_Evaluate_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // GameServiceServer is the server API for GameService service.
 // All implementations must embed UnimplementedGameServiceServer
 // for forward compatibility
@@ -123,6 +134,7 @@ type GameServiceServer interface {
 	ReceiveMessageFromServer(context.Context, *MessageFromServerRequest) (*MessageFromServerResponse, error)
 	SendMessageToRoom(context.Context, *MessageToRoomRequest) (*MessageResponse, error)
 	SolveChallenge(context.Context, *ChallengeRequest) (*ChallengeResponse, error)
+	Evaluate(context.Context, *EvaluateRequest) (*EvaluateResponse, error)
 	mustEmbedUnimplementedGameServiceServer()
 }
 
@@ -150,6 +162,9 @@ func (UnimplementedGameServiceServer) SendMessageToRoom(context.Context, *Messag
 }
 func (UnimplementedGameServiceServer) SolveChallenge(context.Context, *ChallengeRequest) (*ChallengeResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SolveChallenge not implemented")
+}
+func (UnimplementedGameServiceServer) Evaluate(context.Context, *EvaluateRequest) (*EvaluateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Evaluate not implemented")
 }
 func (UnimplementedGameServiceServer) mustEmbedUnimplementedGameServiceServer() {}
 
@@ -290,6 +305,24 @@ func _GameService_SolveChallenge_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _GameService_Evaluate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EvaluateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GameServiceServer).Evaluate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GameService_Evaluate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GameServiceServer).Evaluate(ctx, req.(*EvaluateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // GameService_ServiceDesc is the grpc.ServiceDesc for GameService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -325,7 +358,11 @@ var GameService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "SolveChallenge",
 			Handler:    _GameService_SolveChallenge_Handler,
 		},
+		{
+			MethodName: "Evaluate",
+			Handler:    _GameService_Evaluate_Handler,
+		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "message.proto",
+	Metadata: "proto/message.proto",
 }

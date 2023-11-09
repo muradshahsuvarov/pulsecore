@@ -10,6 +10,7 @@ service GameService {
     rpc ReceiveMessageFromServer(MessageFromServerRequest) returns (MessageFromServerResponse);
     rpc SendMessageToRoom(MessageToRoomRequest) returns (MessageResponse);
     rpc SolveChallenge(ChallengeRequest) returns (ChallengeResponse);
+    rpc Evaluate(EvaluateRequest) returns (EvaluateResponse);
 }
 
 message MessageRequest {
@@ -68,4 +69,16 @@ message ChallengeRequest {
 
 message ChallengeResponse {
     string Answer = 1;
+}
+
+// Request for evaluating a function call with arguments
+message EvaluateRequest {
+    string functionName = 1;  // The name of the function to call
+    repeated string arguments = 2;  // The arguments to pass to the function
+}
+
+// Response from evaluating a function call
+message EvaluateResponse {
+    string result = 1;  // The result of the function call
+    string error = 2;   // Error message if the function call failed
 }

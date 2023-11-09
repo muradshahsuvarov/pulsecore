@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -321,6 +322,19 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, dynamic
 				log.Printf("Error joining room: %v", err)
 			} else {
 				CurrentRoomID = roomID
+				var leaveRoom bool = false
+				printSeparator()
+				fmt.Println("You are in the room ", CurrentRoomID)
+				for !leaveRoom {
+					fmt.Println("If you want to leave the room, type 0")
+					leaveRoom_reader, _ := reader.ReadString('\n')
+					leaveRoom_trimmed := strings.TrimSpace(leaveRoom_reader)
+					leaveRoom_int, _ := strconv.Atoi(leaveRoom_trimmed)
+					if leaveRoom_int == 0 {
+						fmt.Println("You are exiting the room...")
+						leaveRoom = true
+					}
+				}
 			}
 		case "4":
 			printSeparator()
@@ -416,6 +430,11 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, dynamic
 
 		case "12":
 			printSeparator()
+			err := transferHost(CurrentRoomID, MyRPCAddress, "Some message") // Check whether you are a host
+			if err != nil {
+				fmt.Printf("Error meesage: %s\n", err.Error())
+				continue
+			}
 			fmt.Println("Do you want to start the game?\n1 - Yes\n0 - No")
 			printSeparator()
 			option, _ := reader.ReadString('\n')
@@ -470,6 +489,8 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, dynamic
 					fmt.Println("Could not convert flask height to int, error: ", err.Error())
 				}
 
+				// Host Game
+				// Transfer the game state to all the other clients using gRPC
 				flaskgame.StartGame(width, height)
 
 			case "0":
@@ -540,6 +561,36 @@ func (c *Client) ReceiveMessageFromServer(ctx context.Context, req *proto.Messag
 func (c *Client) SolveChallenge(ctx context.Context, req *proto.ChallengeRequest) (*proto.ChallengeResponse, error) {
 	answer := "4"
 	return &proto.ChallengeResponse{Answer: answer}, nil
+}
+
+func (s *Client) Evaluate(ctx context.Context, req *proto.EvaluateRequest) (*proto.EvaluateResponse, error) {
+
+	funcValue := reflect.ValueOf(s).MethodByName(req.FunctionName)
+	if !funcValue.IsValid() {
+		return nil, fmt.Errorf("function not found: %s", req.FunctionName)
+	}
+
+	// Convert arguments from []string to []reflect.Value
+	args := make([]reflect.Value, len(req.Arguments))
+	for i, arg := range req.Arguments {
+		args[i] = reflect.ValueOf(arg)
+	}
+
+	// Call the function dynamically
+	results := funcValue.Call(args)
+
+	// Process results and return a response
+	// This example assumes that the function returns a single string result and an error
+	if len(results) != 2 || results[1].Interface() != nil {
+		return nil, fmt.Errorf("function call failed or did not return expected types")
+	}
+
+	resultStr, ok := results[0].Interface().(string)
+	if !ok {
+		return nil, fmt.Errorf("function did not return a string as the first return value")
+	}
+
+	return &proto.EvaluateResponse{Result: resultStr}, nil
 }
 
 func createRoom(roomName string, rpcAddress string) (int, error) {
