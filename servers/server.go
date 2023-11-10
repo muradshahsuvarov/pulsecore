@@ -113,6 +113,15 @@ func (gs *gameServer) SendMessageToServer(ctx context.Context, req *proto.SendMe
 	return &proto.SendMessageResponse{Success: true}, nil
 }
 
+func (gs *gameServer) Evaluate(ctx context.Context, req *proto.EvaluateRequest) (*proto.EvaluateResponse, error) {
+
+	var receivedArgs string = strings.Join(req.Arguments, ",")
+	var funcExec string = fmt.Sprintf("%s(%s)", req.FunctionName, receivedArgs)
+	fmt.Printf("Received message: %s\n", funcExec)
+
+	return &proto.EvaluateResponse{Result: fmt.Sprintf("- %s was executed", funcExec)}, nil
+}
+
 func (gs *gameServer) RegisterClient(ctx context.Context, req *proto.RegisterClientRequest) (*proto.RegisterClientResponse, error) {
 	trackClient(req.GetRpcAddress())
 	return &proto.RegisterClientResponse{Success: true}, nil
