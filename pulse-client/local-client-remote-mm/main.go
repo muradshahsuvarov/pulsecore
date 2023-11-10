@@ -46,6 +46,8 @@ var applicationId string
 
 var MyRPCAddress string
 
+var fGame *flaskgame.FlaskGame = &flaskgame.FlaskGame{}
+
 func main() {
 
 	u := uuid.New()
@@ -322,19 +324,8 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, dynamic
 				log.Printf("Error joining room: %v", err)
 			} else {
 				CurrentRoomID = roomID
-				var leaveRoom bool = false
 				printSeparator()
-				fmt.Println("You are in the room ", CurrentRoomID)
-				for !leaveRoom {
-					fmt.Println("If you want to leave the room, type 0")
-					leaveRoom_reader, _ := reader.ReadString('\n')
-					leaveRoom_trimmed := strings.TrimSpace(leaveRoom_reader)
-					leaveRoom_int, _ := strconv.Atoi(leaveRoom_trimmed)
-					if leaveRoom_int == 0 {
-						fmt.Println("You are exiting the room...")
-						leaveRoom = true
-					}
-				}
+				fmt.Println("You joined the room ", CurrentRoomID)
 			}
 		case "4":
 			printSeparator()
@@ -489,9 +480,28 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, dynamic
 					fmt.Println("Could not convert flask height to int, error: ", err.Error())
 				}
 
-				// Host Game
-				// Transfer the game state to all the other clients using gRPC
-				flaskgame.StartGame(width, height)
+				// Broadcast the game
+
+				var gameFinished = false
+				var gameFinishedPointer *bool = &gameFinished
+
+				var updateFlask = false
+				var updateFlaskPointer *bool = &updateFlask
+
+				var width_p *int = &width
+				var height_p *int = &height
+
+				go flaskgame.StartGame(width_p, height_p, gameFinishedPointer, updateFlaskPointer)
+
+				for !(*gameFinishedPointer) {
+					if *updateFlaskPointer {
+
+						var width_string string = strconv.Itoa(*width_p)
+						var height_string string = strconv.Itoa(*height_p)
+
+						evaluate(client, "UpdateFlask", []string{width_string, height_string})
+					}
+				}
 
 			case "0":
 				continue
@@ -508,6 +518,17 @@ func choiceHandler(reader *bufio.Reader, client proto.GameServiceClient, dynamic
 			fmt.Println("Invalid choice. Please try again.")
 		}
 	}
+}
+
+func evaluate(client proto.GameServiceClient, funcName string, funcArgs []string) (*proto.EvaluateResponse, error) {
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	return client.Evaluate(ctx, &proto.EvaluateRequest{
+		FunctionName: funcName,
+		Arguments:    funcArgs,
+	})
 }
 
 func sendRoomMessageToServer(client proto.GameServiceClient, roomID int, message string) (*proto.MessageResponse, error) {
@@ -565,7 +586,7 @@ func (c *Client) SolveChallenge(ctx context.Context, req *proto.ChallengeRequest
 
 func (s *Client) Evaluate(ctx context.Context, req *proto.EvaluateRequest) (*proto.EvaluateResponse, error) {
 
-	funcValue := reflect.ValueOf(s).MethodByName(req.FunctionName)
+	funcValue := reflect.ValueOf(fGame).MethodByName(req.FunctionName)
 	if !funcValue.IsValid() {
 		return nil, fmt.Errorf("function not found: %s", req.FunctionName)
 	}
